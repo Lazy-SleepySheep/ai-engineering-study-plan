@@ -29,7 +29,6 @@
   "day-05.qz4ekk": "35. Search Insert Position · Easy",
   "day-05.r1qo27": "34. Find First and Last Position of Element in Sorted Array · Binary Search · Medium",
   "day-06.1arg3y1": "#4 Merge Intervals（120mins）：",
-  "day-06.1gu7d5t": "Greedy & Bin Packing (30mins)（本地连接 · Summary）",
   "day-06.1mfh5ua": "49. Group Anagrams · 复习 · Day 01 做过",
   "day-06.1oxilc": "26. Remove Duplicates from Sorted Array · Array / String · Easy",
   "day-06.1t4h30u": "1. Two Sum · 复习 · Day 01 做过",
@@ -40,16 +39,10 @@
   "day-06.uauakg": "57. Insert Interval · Intervals · Medium",
   "day-06.wc723x": "56. Merge Intervals · Intervals · Medium",
   "day-06.wgkk62": "452. Minimum Number of Arrows to Burst Balloons · Intervals · Medium",
-  "day-11.os0yq5": "Dynamic Programming (30mins)（本地连接 · Summary）",
   "day-12.13b9kb": "Consistent Hashing (20mins)（本地连接）",
-  "day-16.wpc4ju": "Topological Sort (30mins)（本地连接 · Summary）",
   "day-17.4rjxmc": "Sharding (20mins)（本地连接 · Summary）",
   "day-18.1g03wxr": "#16 Modified Binary Search（110mins）：",
-  "day-20.5ask67": "Graph Search & Pathfinding (30mins)（本地连接 · Summary）",
-  "day-23.1awh093": "CAP Theorem (20mins)（本地连接）",
-  "day-25.14ac2ay": "Data Structure Design (30mins)（本地连接 · Summary）",
-  "day-30.18zhio1": "String Matching & Parsing (30mins)（本地连接 · Summary）",
-  "day-32.siim95": "Backtracking (30mins)（本地连接 · Summary）"
+  "day-23.1awh093": "CAP Theorem (20mins)（本地连接）"
  },
  "notes": {}
 }
