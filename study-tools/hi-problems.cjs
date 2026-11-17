@@ -67,6 +67,92 @@ function item(p, esc) {
     + `<a class="rec-go" href="${esc(p.practiceUrl)}" target="_blank" rel="noopener">练习</a></span></li>`;
 }
 
+// The learning pages (讲义) of a track, for the tracker at the top of its tab: System Design's Core Concepts, Patterns and
+// Key Technologies, AI Coding's Common Patterns (DATA.learn). Each has the tick of its line in the timetable's 13:45 row,
+// so ticking it here or there is the same tick, the day it is read, and its 网页 / 本地连接 / Summary links.
+function articles(md, t) {
+  const found = new Map();   // page url -> its tick in the timetable
+  for (const [, day, block] of md.matchAll(/<a id="(day-\d+)"><\/a>([\s\S]*?)(?=<a id="day-|$)/g)) {
+    const line = block.split('\n').find(l => l.startsWith('| ' + hi.TIME));
+    if (!line) continue;
+    for (const part of (line.slice(1, -1).split('|')[2] || '').trim().split('<br>')) {
+      const m = part.match(/^\[[^\]]+\]\((https:\/\/www\.hellointerview\.com\/[^)]+)\) \(\d+mins\)/);
+      if (m && /[☐☑]/.test(part)) found.set(m[1], { key: progress.keyOf(day, part), label: progress.strip(part), done: part.includes('☑') });
+    }
+  }
+  const prefix = t.name + ' · ';
+  return DATA.learn.filter(p => p.group.startsWith(prefix)).map(p => {
+    if (!found.has(p.url)) throw Error('hi-problems: no ☐ for the page ' + p.title + ' in the timetable');
+    return { ...p, ...found.get(p.url), section: p.group.slice(prefix.length), day: hi.LEARNED.get(p.id) };
+  });
+}
+// the tracker: read / all, a bar, and one card per group, in the order the pages are read
+function articleBox(list, esc) {
+  const pct = (d, n) => (n ? 100 * d / n : 0).toFixed(1) + '%', done = list.filter(p => p.done).length;
+  const li = p => {
+    const links = [hi.localOf(p.url) && `<a href="${esc(hi.localOf(p.url))}" target="_blank" rel="noopener">本地连接</a>`,
+      hi.summaryOf(p.id) && `<a href="${esc(hi.summaryOf(p.id))}" target="_blank" rel="noopener">Summary</a>`].filter(Boolean).join(' · ');
+    return `<li class="hl-p${p.done ? ' done' : ''}" data-key="${esc(p.key)}" data-label="${esc(p.label)}"${p.done ? ' data-built="1"' : ''}>`
+      + `<label class="hl-ck"><input type="checkbox" aria-label="读完 ${esc(p.title)}"${p.done ? ' checked' : ''}></label>`
+      + `<span class="hl-t"><a href="${esc(p.url)}" target="_blank" rel="noopener" title="Hello Interview 网页">${esc(p.title)}</a></span>`
+      + `<span class="hl-meta">${links}<a class="hl-day" href="AI_ENGINEER_TRANSITION_PLAN.html#day-${pad(p.day)}" target="_blank" rel="noopener" title="Day ${pad(p.day)} 读这篇">D${pad(p.day)}</a></span></li>`;
+  };
+  const col = s => {
+    const ps = list.filter(p => p.section === s).sort((a, b) => a.day - b.day), d = ps.filter(p => p.done).length;
+    return `<section class="hl-col"><h2><span>${esc(s)}</span><span class="hl-n"><span class="hl-c">${d}</span> / ${ps.length}</span></h2>`
+      + `<div class="hl-bar"><span style="width:${pct(d, ps.length)}"></span></div><ul>${ps.map(li).join('')}</ul></section>`;
+  };
+  return `<div class="hl"><div class="hl-sum"><span class="hl-big">讲义 已读 <span class="hl-done">${done}</span> / ${list.length}</span>`
+    + `<span class="hl-bar"><span style="width:${pct(done, list.length)}"></span></span>`
+    + `<span class="muted">读完就勾上，和时间表 13:45 那一格的讲义是同一个勾；D 标签是哪天读，标题是网页</span></div>`
+    + `<div class="hl-grid">${[...new Set(list.map(p => p.section))].map(col).join('')}</div></div>`;
+}
+// browser side of the tracker: the live ticks from the local server, or the build state plus this browser's ticks
+function articleClient() {
+  var items = [].slice.call(document.querySelectorAll('.hl-p'));
+  if (!items.length) return;
+  var P = 'study-plan:', online = false, last = {};
+  function ls(k, v) { try { if (arguments.length > 1) { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); return null; } return localStorage.getItem(k); } catch (e) { return null; } }
+  function width(el, d, n) { if (el) el.style.width = (n ? 100 * d / n : 0).toFixed(1) + '%'; }
+  function paint(has, built) {
+    items.forEach(function (li) {
+      var d = has(li.dataset.key) || (built && li.dataset.built === '1');
+      li.classList.toggle('done', d);
+      li.querySelector('input').checked = d;
+    });
+    [].slice.call(document.querySelectorAll('.hl')).forEach(function (box) {
+      var all = box.querySelectorAll('.hl-p').length, done = box.querySelectorAll('.hl-p.done').length;
+      box.querySelector('.hl-done').textContent = done;
+      width(box.querySelector('.hl-sum .hl-bar span'), done, all);
+      [].slice.call(box.querySelectorAll('.hl-col')).forEach(function (c) {
+        var n = c.querySelectorAll('.hl-p').length, d = c.querySelectorAll('.hl-p.done').length;
+        c.querySelector('.hl-c').textContent = d;
+        width(c.querySelector('.hl-bar span'), d, n);
+      });
+    });
+  }
+  function live() { paint(function (k) { return !!last[k]; }, false); }
+  function offline() { online = false; paint(function (k) { return ls(P + k) === '1'; }, true); }
+  function load() {
+    if (location.protocol === 'file:') return offline();
+    fetch('/api/progress', { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (st) { online = true; last = st.ticks || {}; live(); }).catch(offline);
+  }
+  items.forEach(function (li) {
+    li.querySelector('input').addEventListener('change', function (e) {
+      var key = li.dataset.key, on = e.target.checked;
+      ls(P + key, on ? '1' : '');
+      if (!online) return offline();
+      fetch('/api/progress', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Study': '1' }, body: JSON.stringify({ key: key, done: on, label: li.dataset.label }) })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(function (j) { last = (j.state && j.state.ticks) || {}; ls(P + key, ''); live(); })
+        .catch(function () { if (on) last[key] = li.dataset.label; else delete last[key]; live(); });
+    });
+  });
+  load();
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) load(); });
+}
+
 // the line under a tab's summary: what the plan does with this list
 function note(t) {
   const days = ds => ds.map(d => 'Day ' + pad(d)).join('、');
@@ -90,6 +176,28 @@ a.rec-day{display:inline-block;margin-left:3px;padding:0 3px;border:1px solid #c
 a.rec-day.ref{border-style:dashed;color:#7f8f9a}
 a.rec-day.ok{background:#2da44e;border-color:#2da44e;color:#fff}
 a.rec-go{margin-left:6px}
+.hl{margin:0 0 16px}
+.hl-sum{display:flex;flex-wrap:wrap;align-items:center;gap:4px 18px;background:#fff;border:1px solid #dce4ea;border-radius:10px;padding:8px 14px;margin:0 0 10px}
+.hl-big{font-size:18px;font-weight:600}
+.hl-sum .muted{font-size:13px}
+.hl-bar{height:6px;background:#e6ecf0;border-radius:3px;overflow:hidden}
+.hl-sum>.hl-bar{flex:1 1 160px;max-width:360px}
+.hl-bar span{display:block;height:100%;background:#2da44e}
+.hl-grid{column-width:330px;column-gap:10px}
+section.hl-col{display:inline-block;width:100%;box-sizing:border-box;break-inside:avoid;margin:0 0 10px;padding:8px 8px 6px}
+.hl-col h2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 3px;font-size:14.5px;line-height:1.3}
+.hl-n{flex:none;font-size:12.5px;font-weight:400;color:#4b5b66}
+.hl-col .hl-bar{height:4px;margin:5px 3px 4px}
+.hl-col ul{list-style:none;margin:0;padding:0}
+li.hl-p{display:flex;gap:5px;align-items:baseline;margin:1px 0;padding:1px 5px;border-radius:5px;font-size:13px;line-height:1.35}
+li.hl-p.done{background:#dafbe1}
+.hl-ck input{width:1em;height:1em;margin:0;vertical-align:-.14em;accent-color:#2da44e;cursor:pointer}
+.hl-t{flex:1;min-width:0}
+.hl-t a{text-decoration:none}
+li.hl-p.done .hl-t a{color:#116329}
+.hl-meta{flex:none;font-size:11.5px;color:#5b6b78;white-space:nowrap}
+a.hl-day{display:inline-block;margin-left:5px;padding:0 3px;border:1px solid #c9d6de;border-radius:4px;line-height:1.3;color:#4b5b66;text-decoration:none}
+li.hl-p.done a.hl-day{background:#2da44e;border-color:#2da44e;color:#fff}
 </style>`;
 
-module.exports = { DATA, DIFFS, PLAN, TRACKS, KEY, tracks, item, note, style };
+module.exports = { DATA, DIFFS, PLAN, TRACKS, KEY, tracks, item, note, style, articles, articleBox, articleClient };

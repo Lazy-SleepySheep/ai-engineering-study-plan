@@ -171,8 +171,9 @@ function client() {
 function page(md, { shell, esc }) {
   const pct = (d, n) => (n ? 100 * d / n : 0).toFixed(1) + '%';
   const dayLink = (day, tip) => `<a href="AI_ENGINEER_TRANSITION_PLAN.html#day-${pad(day)}" target="_blank" rel="noopener"${tip ? ` title="${esc(tip)}"` : ''}>Day ${pad(day)}</a>`;
-  // one tab: summary (done / left, bar, count lines) and one column per section
-  const panel = (tab, list, sections, lines, item, [doneWord, unit] = ['已刷', '题'], note = '') => {
+  // one tab: summary (done / left, bar, count lines) and one column per section; top: what comes before them (the
+  // 讲义 tracker of System Design and AI Coding)
+  const panel = (tab, list, sections, lines, item, [doneWord, unit] = ['已刷', '题'], note = '', top = '') => {
     const done = list.filter(p => p.done).length;
     const line = ([key, label, values]) => `<span class="rec-line">${label ? label + ' ' : ''}${values.map(v => {
       const all = list.filter(p => p[key] === v);
@@ -183,7 +184,7 @@ function page(md, { shell, esc }) {
       return `<section class="rec-col"><h2><span>${esc(s)}</span><span class="rec-n"><span class="rec-c">${d}</span> / ${ps.length}</span></h2>`
         + `<div class="rec-bar"><span style="width:${pct(d, ps.length)}"></span></div><ul>${ps.map(item).join('')}</ul></section>`;
     };
-    return `<div class="rec-panel" data-tab="${tab}"${tab === 'leetcode' ? '' : ' hidden'}>`
+    return `<div class="rec-panel" data-tab="${tab}"${tab === 'leetcode' ? '' : ' hidden'}>${top}`
       + `<div class="rec-sum"><span class="rec-big">${doneWord} <span class="rec-done">${done}</span> / ${list.length}<span class="muted"> · 还剩 <span class="rec-left">${list.length - done}</span> ${unit}</span></span>`
       + `<span class="rec-bar"><span style="width:${pct(done, list.length)}"></span></span>${lines.map(line).join('')}<p class="rec-msg muted"></p></div>${note}`
       + `<div class="rec-grid">${sections.map(col).join('')}</div></div>`;
@@ -221,13 +222,13 @@ function page(md, { shell, esc }) {
     + `<button type="button" role="tab" id="hellointerview" data-tab="hellointerview" aria-selected="false">Hello Interview<span class="rec-tab-n" data-tab="hellointerview">${count(hiList)}</span></button>`
     + hpTracks.map(t => `<button type="button" role="tab" id="${t.tab}" data-tab="${t.tab}" aria-selected="false">${t.name}<span class="rec-tab-n" data-tab="${t.tab}">${count(t.items)}</span></button>`).join('')
     + `</div></div>`
-    + `<p class="rec-note muted">LeetCode 的勾选在<a href="AI_ENGINEER_TRANSITION_PLAN.html">每日时间表</a>里做，当天、复习日或重复的那天勾过一次就算做了；按 LeetCode 的专题分列，每列按日期排序，鼠标停在 Day 上能看到其他日期。Pattern 可以直接在表里打勾，和时间表当天 Data Structure & Algo 那一格的 pattern 是同一个勾。Hello Interview 在时间表 13:45 那一格打勾，每周一列，鼠标停在题目上能看到当天要做什么。System Design 和 AI Coding 是 Hello Interview 题库里的全部练习题，练过哪道就在表里直接打勾。</p>`
+    + `<p class="rec-note muted">LeetCode 的勾选在<a href="AI_ENGINEER_TRANSITION_PLAN.html">每日时间表</a>里做，当天、复习日或重复的那天勾过一次就算做了；按 LeetCode 的专题分列，每列按日期排序，鼠标停在 Day 上能看到其他日期。Pattern 可以直接在表里打勾，和时间表当天 Data Structure & Algo 那一格的 pattern 是同一个勾。Hello Interview 在时间表 13:45 那一格打勾，每周一列，鼠标停在题目上能看到当天要做什么。System Design 和 AI Coding 最上面是 Hello Interview 的讲义，读完就勾上，和时间表 13:45 那一格的讲义是同一个勾；下面是题库里的全部练习题，练过哪道就在表里直接打勾。</p>`
     + panel('leetcode', lc, lcSections, [['diff', '', DIFFS]], lcItem)
     + pt.panel
     + panel('hellointerview', hiList, [...new Set(hiList.map(p => p.section))], [['group', '', hi.GROUPS]], hiItem, ['已完成', '天'])
     + hpTracks.map(t => panel(t.tab, t.items.map(p => ({ ...p, section: p.diff })), hp.DIFFS.filter(d => t.items.some(p => p.diff === d)),
-      [['diff', '', hp.DIFFS], ['planned', '', hp.PLAN]], p => hp.item(p, esc), ['已练', '题'], hp.note(t))).join('')
-    + `<script>(${client.toString()})();(${patterns.client.toString()})();</script>`;
+      [['diff', '', hp.DIFFS], ['planned', '', hp.PLAN]], p => hp.item(p, esc), ['已练', '题'], hp.note(t), hp.articleBox(hp.articles(md, t), esc))).join('')
+    + `<script>(${client.toString()})();(${patterns.client.toString()})();(${hp.articleClient.toString()})();</script>`;
   fs.writeFileSync(FILE, shell(TITLE, body, true));
   return { file: FILE, leetcode: lc.length, patterns: pt.total, helloInterview: hiList.length, systemDesign: hpTracks[0].items.length, aiCoding: hpTracks[1].items.length };
 }
