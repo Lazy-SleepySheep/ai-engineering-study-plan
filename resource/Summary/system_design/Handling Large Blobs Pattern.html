@@ -1,0 +1,189 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Handling Large Blobs · Summary</title><link rel="stylesheet" href="../../../Study%20topics/style.css"><style>article{background:#fff;border:1px solid #dce4ea;border-radius:12px;padding:8px 24px 20px}article h1{font-size:26px}article table{margin:10px 0}article li{margin:4px 0}@media(max-width:600px){article{padding:4px 14px 14px}}</style></head><body><main><p class="muted">System Design · Patterns · <a href="../../../Reports/AI_ENGINEER_TRANSITION_PLAN.html#day-07">Day 07 读</a> · <a href="https://www.hellointerview.com/learn/system-design/patterns/large-blobs">网页</a> · <a href="../../Hello_Interview_System_Design/HTML/045%20Handling%20Large%20Blobs%20Pattern%20for%20System%20Design%20Interviews%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a> · <a href="obsidian://open?vault=JuJu_Workspace&amp;file=02_Knowledge%2FProgramming%2Fsystem_design%2FHandling%20Large%20Blobs%20Pattern">在 Obsidian 里打开</a></p><article><h1>Handling Large Blobs Pattern</h1>
+<h2>2026-11-16 · Handling Large Blobs Pattern</h2>
+<p>来源：<a href="../../Hello_Interview_System_Design/HTML/045%20Handling%20Large%20Blobs%20Pattern%20for%20System%20Design%20Interviews%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a></p>
+<p>NotebookLM 报告：<a href="https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f">https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f</a></p>
+<h1>系统设计中的大文件（Large Blobs）处理模式简报</h1>
+<h2>执行摘要（Executive Summary）</h2>
+<p>在分布式系统设计中，处理诸如视频、高分辨率图片和大容量文档等大型二进制对象（Blobs）是常见且具有挑战性的课题。将大文件直接通过应用服务器进行传输或存入关系型数据库，会导致数据库查询性能下降、备份与复制缓慢，同时使应用服务器成为不必要的带宽和延迟瓶颈。</p>
+<p>本简报基于分布式系统设计架构的最佳实践，探讨了<strong>无服务器数据访问模式（Serverless Data Access Pattern）</strong>。该模式的核心理念是<strong>解耦数据传输与权限控制</strong>：应用服务器仅负责身份验证与临时凭证（如预签名 URL）的生成，客户端直接与云端 Blob 存储（如 AWS S3）或 CDN（如 CloudFront）进行大文件的上传与下载。通过引入分块上传（Multipart/Resumable Uploads）、事件驱动的状态同步（Event-Driven Synchronization）以及异步隔离检查（Quarantine Pipeline），系统能够在实现高扩展性、高吞吐量的同时，保障分布式的状态一致性与系统安全性。</p>
+<hr>
+<h2>核心主题深度解析</h2>
+<h3>1. 传统代理模式的瓶颈与存储分离原则</h3>
+<p>在传统架构中，客户端上传或下载大文件往往通过应用服务器进行中转（Server as a Proxy）。这种设计存在严重弊端：</p>
+<ul>
+<li><strong>数据库性能下降</strong>：关系型数据库擅长处理结构化数据与复杂查询，但存放超过 10MB 的二进制大对象（BLOB）极易破坏索引效率、拉长备份时间并拖垮数据库复制。通用经验法则为：<strong>凡是大于 10MB 且不需要 SQL 查询的文件，均应存入 Blob 存储</strong>（如 S3 具有 99.999999999% 的 11 个 9 耐久性与弹性按量付费优势）。</li>
+<li><strong>应用服务器中途瓶颈</strong>：当客户端上传 2GB 视频时，应用服务器若作为中继管道，不仅增加了数据传输延迟，还白白消耗了计算节点的带宽与内存。云厂商本身具备全球化基础设施、断点续传能力和极高带宽，应用服务器不应充当“哑管道（Dumb Pipe）”。</li>
+</ul>
+<h3>2. 预签名 URL 与客户端直连模式（Direct Upload/Download）</h3>
+<p>为解决中继瓶颈，系统架构需向“客户端直连存储”演进。应用服务器的作用转变为类似“演唱会售票处”：仅验证身份并发放带有时效和权限约束的凭证，随后的实际数据传输完全由客户端与存储服务直连完成。</p>
+<h4>A. 简易直接上传（Simple Direct Upload）</h4>
+<ul>
+<li><strong>预签名 URL 生成</strong>：客户端向应用服务器请求上传权限，服务器在<strong>本地内存</strong>中利用加密密钥签名生成预签名 URL（Presigned URL），整个过程<strong>无需向 Blob 存储发起网络调用</strong>。</li>
+<li><strong>安全与条件约束</strong>：预签名 URL 通常具备 15 分钟至 1 小时的短有效期，且可通过签名硬编码安全约束条件：<ul>
+<li><code>content-length-range</code>：限制文件大小的最大/最小值（如防止将 10GB 文件伪装成 10MB 上传）。</li>
+<li><code>content-type</code>：限制文件格式（如仅允许上传图片，拒绝视频或可执行文件）。</li>
+</ul>
+</li>
+<li><strong>客户端操作</strong>：客户端使用 HTTP <code>PUT</code> 请求将文件直传至对应存储节点。</li>
+</ul>
+<h4>B. 简易直接下载（Simple Direct Download）与 CDN 验证</h4>
+<ul>
+<li><strong>Blob 存储直连</strong>：适用于低频访问文件，由 Blob 存储使用云凭证私钥验证签名。</li>
+<li><strong>CDN 分发（如 CloudFront）</strong>：适用于高频访问文件。CDN 与 Blob 存储的签名校验机制存在关键差异：<ul>
+<li><strong>存储服务签名</strong>：基于对称密钥/云凭证，由存储服务直接校验。</li>
+<li><strong>CDN 签名</strong>：基于<strong>非对称加密（公钥/私钥对）</strong>。应用服务器持有私钥进行 URL 或 Cookie 签名，全球边缘节点（Edge Locations）使用对应的公钥直接校验签名，无需回调源站或应用服务器。</li>
+</ul>
+</li>
+</ul>
+<h3>3. 大文件断点续传与分块机制（Resumable Uploads）</h3>
+<p>在不稳定网络下传输大文件（例如在 100Mbps 带宽下传输 5GB 视频需要 7 分 9 秒），若传输在 99% 时中断，全量重传成本极高。云厂商通过分块 API 解决了此问题：</p>
+<ul>
+<li><strong>分块与并行</strong>：文件被切割为固定大小的块（例如 AWS S3 要求的 5MB–5GB 块，或 Azure 4MB–100MB 的 Block Blobs）。每个分块获得独立的预签名上传凭证。</li>
+<li><strong>校验与进度追踪</strong>：客户端上传分块并记录存储服务返回的校验和（Checksum/Hash）。客户端可根据已完成分块数量精确计算进度。</li>
+<li><strong>断点恢复</strong>：传输中断后，客户端向存储 API 发起查询（如 S3 的 <code>ListParts</code> 或 GCS 续传会话查询），获取已成功上传的分块列表，仅重传缺失块。</li>
+<li><strong>合并与生命周期清理</strong>：所有分块上传完成后，客户端调用完成端点（Completion Endpoint），存储服务将分块组装为单一对象。<strong>未完成的分块仍会产生存储费用</strong>，系统必须设置生命周期规则（Lifecycle Rules），在 24–48 小时后自动清理清理残留的未完成分块。</li>
+</ul>
+<h3>4. 分布式状态同步与最终一致性</h3>
+<p>将服务器移除出数据主路径后，数据库元数据（Metadata）与存储桶实际文件之间产生了分布式一致性挑战。</p>
+<pre><code>典型数据库文件元数据表结构：
+- id (UUID)
+- user_id (UUID)
+- filename (VARCHAR)
+- size_bytes (BIGINT)
+- content_type (VARCHAR)
+- storage_key (VARCHAR) -- 例: s3://bucket/user123/files/abc-123.pdf
+- status (VARCHAR)      -- &#39;pending&#39;, &#39;uploading&#39;, &#39;completed&#39;, &#39;failed&#39;
+- created_at / updated_at (TIMESTAMP)
+</code></pre>
+<h4>单纯依赖客户端通知的风险：</h4>
+<p>若客户端在上传完成后通知服务器更新数据库 <code>status</code> 状态，极易导致：</p>
+<ol>
+<li><strong>竞态条件</strong>：数据库已标记 <code>completed</code>，但存储服务尚未就绪。</li>
+<li><strong>孤儿文件（Orphaned Files）</strong>：客户端上传成功后崩溃，导致存储桶有文件但数据库无记录。</li>
+<li><strong>恶意客户端</strong>：客户端未上传文件却伪造“完成”通知。</li>
+<li><strong>网络故障</strong>：完成通知因网络问题未能到达服务器。</li>
+</ol>
+<h4>正确同步架构：事件驱动 + 对账机制（Event Notifications &amp; Reconciliation）</h4>
+<ol>
+<li><strong>主更新机制（事件驱动）</strong>：Blob 存储在成功接收文件后，自动向消息服务（如 AWS SNS/SQS）发布事件。后端异步消费者接收事件，提取 <code>storage_key</code> 并将数据库状态精确更新为 <code>completed</code>。此机制将客户端从信任链中剥离。</li>
+<li><strong>安全网机制（定期对账）</strong>：由于消息事件可能延迟或丢失，系统需配置定期对账任务（Reconciliation Job），扫描长时间停留在 <code>pending</code> 状态的记录，向存储服务核实文件真实性并纠正状态。</li>
+</ol>
+<hr>
+<h2>常见深度追问与技术对策</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">追问焦点</th>
+<th align="left">关键技术对策与架构设计</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>上传在 99% 处失败怎么办？</strong></td>
+<td align="left">采用分块上传（S3 Multipart / GCS Resumable）。客户端保存会话标识符（如上传 ID），连接恢复后调用 API（如 <code>ListParts</code>）获取已上传块列表，仅补传失败分块。配置存储生命周期规则（1-2 天）清除未完成分块以控成本。</td>
+</tr>
+<tr>
+<td align="left"><strong>如何防止恶意滥用与存储攻击？</strong></td>
+<td align="left">1. <strong>预签名 URL 强约束</strong>：硬编码文件大小上下限（<code>content-length-range</code>）与 MIME 类型。<br>2. <strong>隔离桶流水线（Quarantine Bucket）</strong>：上传文件先进入隔离桶，经异步扫描（病毒查杀、文件头校验、内容审核）合格后，再移动至公共存储桶并更新数据库为可用。限制上传者直接获取刚上传文件的访问权。</td>
+</tr>
+<tr>
+<td align="left"><strong>如何高效管理元数据？</strong></td>
+<td align="left">将元数据（上传者、权限、类型）保存在关系型数据库中，避免将大量元数据保存在 S3 标签（Tags）上（S3 标签限制 10 个且无法高效检索）。数据库记录在生成预签名 URL 时即建立（状态为 <code>pending</code>），以唯一的 <code>storage_key</code>（如 <code>uploads/{user_id}/{timestamp}/{uuid}</code>）作为关联数据库与存储对象的唯一纽带。</td>
+</tr>
+<tr>
+<td align="left"><strong>如何保障高并发下的极速下载？</strong></td>
+<td align="left">1. <strong>CDN 边缘缓存</strong>：全局分发，将访问延迟从百毫秒级降至个位数毫秒级。<br>2. <strong>HTTP Range 分段请求</strong>：允许客户端指定 <code>Range: bytes=0-10485759</code> 校验并下载文件的特定字节段，支持多线程并行下载与下载断点续传。</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2>主流云服务商术语映射表</h2>
+<p>在系统设计面试与架构评估中，不同云厂商对同一模式的术语定义如下：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">功能模块</th>
+<th align="left">AWS (Amazon Web Services)</th>
+<th align="left">Google Cloud (GCP)</th>
+<th align="left">Microsoft Azure</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>临时上传 URL</strong></td>
+<td align="left">Presigned URLs (PUT / POST)</td>
+<td align="left">Signed URLs (resumable / simple)</td>
+<td align="left">SAS tokens (Shared Access Signature)</td>
+</tr>
+<tr>
+<td align="left"><strong>大文件分块上传</strong></td>
+<td align="left">Multipart Upload API (5MB-5GB)</td>
+<td align="left">Resumable Uploads (弹性块)</td>
+<td align="left">Block Blobs (4MB-100MB blocks)</td>
+</tr>
+<tr>
+<td align="left"><strong>存储事件通知</strong></td>
+<td align="left">S3 Event Notifications (到 SQS/SNS/Lambda)</td>
+<td align="left">Cloud Storage Pub/Sub (到 Cloud Functions)</td>
+<td align="left">Event Grid (Blob storage events)</td>
+</tr>
+<tr>
+<td align="left"><strong>CDN 带签名访问</strong></td>
+<td align="left">CloudFront (Signed URLs/Cookies)</td>
+<td align="left">Cloud CDN (Signed URLs)</td>
+<td align="left">Azure CDN (SAS tokens)</td>
+</tr>
+<tr>
+<td align="left"><strong>自动清理策略</strong></td>
+<td align="left">Lifecycle Rules</td>
+<td align="left">Lifecycle Management</td>
+<td align="left">Lifecycle Management Policies</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2>重要引用与背景上下文</h2>
+<h3>1. 关乎数据库性能的基准规则</h3>
+<blockquote>
+<p><strong>原文</strong>：&quot;As a general rule of thumb, if it&#39;s over 10MB and doesn&#39;t need SQL queries, it should probably be in blob storage.&quot;</p>
+<p><strong>上下文解析</strong>：在系统架构评估中，10MB 是划分数据库 BLOB 字段与独立对象存储的核心分水岭。超过此量级的数据进入数据库会导致 I/O 阻塞、复制延迟和备份膨胀。</p>
+</blockquote>
+<h3>2. 服务器角色的本质转变</h3>
+<blockquote>
+<p><strong>原文</strong>：&quot;Think of your application server as a ticket booth at a concert venue. When someone shows up with a valid ticket, you don&#39;t personally escort them to their seat. You verify their identity, hand them a wristband, and let them find their own way.&quot;</p>
+<p><strong>上下文解析</strong>：此比喻阐明了无服务器数据访问的核心。服务器的任务是鉴权与签发凭证（发放手环），而不是做数据传输的搬运工（亲自领路），从而彻底消除中转瓶颈。</p>
+</blockquote>
+<h3>3. CDN 签名与存储签名的验证差异</h3>
+<blockquote>
+<p><strong>原文</strong>：&quot;Blob storage signatures... are validated by the storage service using your cloud credentials... CDN signatures... are validated by the CDN edge servers using public/private key cryptography.&quot;</p>
+<p><strong>上下文解析</strong>：揭示了安全校验的底层物理位置差异。CDN 边缘节点利用非对称加密（公钥）在离用户最近的地方完成鉴权，避免了跨网回调源站，实现了极低延迟的访问控制。</p>
+</blockquote>
+<h3>4. 客户端解耦带来的分布式状态挑战</h3>
+<blockquote>
+<p><strong>原文</strong>：&quot;Moving your servers out of the critical path solves the bottleneck, but introduces a new class of problems around distributed state management.&quot;</p>
+<p><strong>上下文解析</strong>：引入客户端直连虽然解决了带宽瓶颈，但将单机事务变成了分布式系统一致性问题（数据库与对象存储分属不同系统）。系统设计必须依赖事件驱动与异步对账来保证最终一致性。</p>
+</blockquote>
+<hr>
+<h2>关键实践与决策指南</h2>
+<h3>1. 面试场景应用阈值决策</h3>
+<ul>
+<li><strong>适用场景（数据传输量 &gt; 100MB）</strong>：<ul>
+<li><strong>视频平台（如 YouTube）</strong>：视频直传 S3 分块，转码工作流由 S3 事件触发；下载通过 CloudFront 签名 URL 进行自适应码率流播放。</li>
+<li><strong>照片分享（如 Instagram）</strong>：原始大图直传 S3，事件触发 Worker 生成缩略图。</li>
+<li><strong>网盘同步（如 Dropbox）</strong>：文件切块直传，结合客户端 Hash 对比实现增量同步（Delta Sync）。</li>
+<li><strong>IM 媒体传输（如 WhatsApp）</strong>：媒体直传后仅在聊天信道传输文件引用句柄，接收方持有时效性 URL 下载。</li>
+</ul>
+</li>
+<li><strong>不适用场景（应继续使用传统 API 服务器代理）</strong>：<ul>
+<li><strong>小文件传输（&lt; 10MB）</strong>：JSON 载荷、表单、微小图片。直接走常规 API 更简单，避免两次 HTTP 请求的额外延迟。</li>
+<li><strong>同步强校验需求</strong>：例如 CSV 导入时必须在接收数据流的同时即时校验表格 Header 和每一行格式。</li>
+<li><strong>合规与实时数据审查</strong>：金融/医疗系统要求所有数据在落盘前必须流经指定安全审计设备或进行合规扫描（HIPAA/PCI-DSS）。</li>
+<li><strong>强交互极速反馈 UX</strong>：需要根据文件内容实现毫秒级交互（如上传头像需即时完成人脸检测并呈现在界面上）。</li>
+</ul>
+</li>
+</ul>
+<h3>2. 架构设计最佳实践清单</h3>
+<ol>
+<li><strong>预签名 URL 本地生成</strong>：始终在服务器内存中完成签名计算，不要为获取 URL 增加一次对 S3 的网络调用。</li>
+<li><strong>严格控制凭证生效期</strong>：上传 URL 设置为 15–60 分钟有效；包含严格的 <code>content-length-range</code> 条件。</li>
+<li><strong>零信任客户端</strong>：状态更新依赖云存储的事件通知（SNS/SQS），不得以前端的回调作为文件生效的唯一凭据。</li>
+<li><strong>防范孤儿分块</strong>：针对分块上传，必须配置对象存储的生命周期规则，自动清理超过 24–48 小时未合拢的垃圾分块。</li>
+<li><strong>异步安全隔离区</strong>：敏感业务中，新建文件先落入隔离桶（Quarantine Bucket），通过病毒扫描与内容审核后再跨桶移动（Move）至生产桶。</li>
+</ol>
+</article></main></body></html>

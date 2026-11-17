@@ -1,0 +1,219 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>API Gateway · Summary</title><link rel="stylesheet" href="../../../Study%20topics/style.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script><style>article{background:#fff;border:1px solid #dce4ea;border-radius:12px;padding:8px 24px 20px}article h1{font-size:26px}article table{margin:10px 0}article li{margin:4px 0}@media(max-width:600px){article{padding:4px 14px 14px}}</style></head><body><main><p class="muted">System Design · Key Technologies · <a href="../../../Reports/AI_ENGINEER_TRANSITION_PLAN.html#day-28">Day 28 读</a> · <a href="https://www.hellointerview.com/learn/system-design/deep-dives/api-gateway">网页</a> · <a href="../../Hello_Interview_System_Design/HTML/050%20API%20Gateway%20Deep%20Dive%20for%20System%20Design%20Interviews%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a> · <a href="obsidian://open?vault=JuJu_Workspace&amp;file=02_Knowledge%2FProgramming%2Fsystem_design%2FAPI%20Gateway">在 Obsidian 里打开</a></p><article><h1>API Gateway</h1>
+<h2>2026-11-13 · API Gateway</h2>
+<p>来源：<a href="https://www.hellointerview.com/learn/system-design/deep-dives/api-gateway">https://www.hellointerview.com/learn/system-design/deep-dives/api-gateway</a></p>
+<p>NotebookLM 报告：<a href="https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f">https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f</a></p>
+<h1>API 网关系统设计深度解析与面试指南简报</h1>
+<h2>执行摘要（Executive Summary）</h2>
+<p>API 网关（API Gateway）是现代微服务架构中的关键核心组件，扮演着所有客户端请求接入系统内部的<strong>单一入口点（Single Entry Point）<strong>角色。其最根本的职责是</strong>请求路由（Request Routing）</strong>，即接收客户端请求并将其分发至对应的后端微服务；同时，它也集中处理诸如身份验证、限流、SSL 终止、日志监控等跨切面关注点（中间件功能）。</p>
+<p>在系统设计面试中，API 网关的使用需要遵循明确的策略：</p>
+<ol>
+<li><strong>适用场景</strong>：必须在微服务架构下引入；对于简单的单体架构或单一客户端系统，引入 API 网关属于过度设计。</li>
+<li><strong>面试策略</strong>：API 网关虽然重要，但通常不是面试官想要深挖的核心亮点。最有效的做法是在画出 API 网关后，明确指出其负责“路由与基础中间件处理”，并在 30 秒内迅速切入系统的核心业务逻辑设计，避免在网关细节上浪费时间。</li>
+</ol>
+<hr>
+<h2>核心概念与架构演进（Core Concepts &amp; Architecture）</h2>
+<h3>1. 概念定义与“酒店前台”类比</h3>
+<p>API 网关可以类比为奢华酒店的前台：</p>
+<ul>
+<li><strong>解耦内部复杂性</strong>：酒店客人（客户端）不需要知道客房服务部、维修间或厨房（后端微服务）具体位于哪个房间或楼层，只需要直接与前台沟通。</li>
+<li><strong>集中管理服务</strong>：正如前台统一处理入住登记、房号分配和客人需求一样，API 网关统一管理身份验证、路由分发和请求处理。</li>
+</ul>
+<h3>2. 微服务架构下的演化</h3>
+<p>API 网关的演化与微服务架构的发展同步。随着单体应用被拆分为多个专门的微服务，系统对集中控制点的需求日益凸显。</p>
+<ul>
+<li><strong>无网关的问题</strong>：如果没有 API 网关，客户端必须直接了解并与多个微服务进行通信，这会导致客户端代码高度复杂，且客户端与后端内部架构产生紧密耦合。</li>
+<li><strong>网关的作用</strong>：API 网关作为一个轻量且职责明确的组件，在外部客户端 API 与内部服务架构之间构筑了一层清晰的分离屏障。</li>
+</ul>
+<hr>
+<h2>请求处理全流程详解（Tracing a Request）</h2>
+<p>客户端请求传入 API 网关后（通常通过 HTTP，也可通过 gRPC 等协议），网关将依次执行以下 6 个核心步骤：</p>
+<pre><code>[客户端请求] 
+     │
+     ▼
+1. 请求校验 (Validation)
+     │
+     ▼
+2. 中间件处理 (Middleware: Auth, Rate Limiting, etc.)
+     │
+     ▼
+3. 请求路由 (Routing: Match Path/Method)
+     │
+     ▼
+4. 后端通信 (Backend Communication: Protocol Translation) ──► [后端微服务处理]
+     │                                                               │
+     ▼                                                               ▼
+5. 响应转换 (Response Transformation) ◄──────────────────────────────┘
+     │
+     ▼
+6. 响应缓存 (Caching: Optional)
+     │
+     ▼
+[返回客户端]
+</code></pre>
+<h3>1. 请求校验（Request Validation）</h3>
+<p>网关在处理请求的第一时间检查其格式与完整性（如 URL 是否有效、必要 Header 是否存在、Request Body/JSON Payload 格式是否正确、API Key 是否包含）。</p>
+<ul>
+<li><strong>价值</strong>：早抛错（Early Rejection）。若移动端发送了格式错误的 JSON 或遗漏了 API Key，网关可直接拒绝并返回错误信息，避免后端微服务为必定失败的请求浪费计算资源。</li>
+</ul>
+<h3>2. 中间件处理（Middleware）</h3>
+<p>网关可配置多种跨切面中间件任务，在面试中最相关且最常提及的包括：</p>
+<ul>
+<li><strong>身份验证（Authentication）</strong>：如验证 JWT Tokens。</li>
+<li><strong>速率限制（Rate Limiting）</strong>：防止 API 被滥用或刷接口。</li>
+<li><strong>IP 允许/拒绝名单（IP Whitelisting/Blacklisting 或 Allowlist/Denylist）</strong>。</li>
+</ul>
+<p><em>其他可选中间件功能包括</em>：SSL 终止、流量日志与监控、响应压缩、CORS Headers 处理、请求大小校验、响应超时处理、API 版本控制、流量削峰/节流（Throttling）、服务发现集成等。</p>
+<h3>3. 请求路由（Routing）</h3>
+<p>路由是网关的<strong>核心主要功能</strong>。网关维护一张路由表，根据以下信息的组合将请求映射到后端服务：</p>
+<ul>
+<li>URL 路径（如 <code>/users/*</code> 映射至用户服务）</li>
+<li>HTTP 方法（GET、POST 等）</li>
+<li>查询参数（Query Parameters）</li>
+<li>请求头（Headers）</li>
+</ul>
+<p><strong>路由配置示例</strong>：</p>
+<ul>
+<li>路径 <code>/users/*</code> $\rightarrow$ 服务 <code>user-service</code> (端口 8080)</li>
+<li>路径 <code>/orders/*</code> $\rightarrow$ 服务 <code>order-service</code> (端口 8081)</li>
+<li>路径 <code>/payments/*</code> $\rightarrow$ 服务 <code>payment-service</code> (端口 8082)</li>
+</ul>
+<h3>4. 后端通信与协议转换（Backend Communication）</h3>
+<p>大部分服务使用 HTTP 通信，但部分内部微服务出于性能考虑可能使用 gRPC 等不同协议。API 网关可以承担<strong>协议转换</strong>职责，将外网 HTTP 请求转换为内网 gRPC 请求。这允许后端服务采用最高效的内部协议，而无需向客户端暴露细节。</p>
+<h3>5. 响应转换（Response Transformation）</h3>
+<p>网关将后端服务返回的数据格式转换为客户端请求的格式。</p>
+<ul>
+<li><em>示例</em>：客户端发送 <code>GET /users/123/profile</code>（HTTP） $\rightarrow$ 网关转换为内部 gRPC 调用 <code>userService.getProfile({ userId: &quot;123&quot; })</code> $\rightarrow$ 网关将 gRPC 响应结果转换为 JSON 格式通过 HTTP 返回给客户端。</li>
+</ul>
+<h3>6. 响应缓存（Caching）</h3>
+<p>网关可在返回响应前对其进行可选缓存。适用于**频繁访问、不常变更且非用户特定（Not user-specific）**的数据。</p>
+<ul>
+<li><strong>缓存策略</strong>：全量响应缓存（Full Response Caching）、局部缓存（Partial Caching）、基于 TTL 或事件驱动的缓存失效（Cache Invalidation）。</li>
+<li><strong>存储位置</strong>：可存于网关内存中，或分布式缓存（如 Redis）中。</li>
+</ul>
+<hr>
+<h2>扩展性与基础设施策略（Scaling an API Gateway）</h2>
+<p>扩展 API 网关主要包含两个维度：处理高并发负载与实现全球化分布。</p>
+<h3>1. 水平扩展（Horizontal Scaling）</h3>
+<p>API 网关通常是**无状态（Stateless）**的，非常适合水平扩展。可以在网关集群前放置负载均衡器（Load Balancer）来分发流量。</p>
+<p>在面试中需要清晰区分两种负载均衡：</p>
+<ul>
+<li><strong>客户端到网关的负载均衡（Client-to-Gateway）</strong>：由网关前端的独立负载均衡器（如 AWS ELB 或 NGINX）处理。</li>
+<li><strong>网关到服务的负载均衡（Gateway-to-Service）</strong>：API 网关自身具备将请求分发至同一后端服务多个实例的能力。</li>
+</ul>
+<blockquote>
+<p><strong>面试技巧</strong>：在画架构图时，可以将“API 网关”与前端的“负载均衡器”抽象合并画为一个方框（如“API Gateway &amp; Load Balancer”），避免陷入入口组件的细枝末节中。</p>
+</blockquote>
+<h3>2. 全球分布（Global Distribution）</h3>
+<p>对于全球化的大型应用，可参照 CDN 的部署模式将 API 网关部署在离用户更近的位置：</p>
+<ul>
+<li><strong>区域部署（Regional Deployments）</strong>：在多个地理区域部署网关实例。</li>
+<li><strong>基于 DNS 的路由（GeoDNS-based Routing）</strong>：使用 GeoDNS 将用户路由至最近的网关。</li>
+<li><strong>配置同步（Configuration Synchronization）</strong>：确保所有区域的路由规则与中间件策略保持一致。</li>
+</ul>
+<hr>
+<h2>技术方案对比（Popular API Gateways）</h2>
+<p>在选择 API 网关时，业界主要分为云厂商托管服务与开源解决方案两大阵营：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">分类</th>
+<th align="left">技术组件</th>
+<th align="left">核心特点与优势</th>
+<th align="left">适用场景 / 约束</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>托管服务</strong><br><em>(极易使用，成本较高)</em></td>
+<td align="left"><strong>AWS API Gateway</strong></td>
+<td align="left">深度集成 AWS 生态；支持 REST 与 WebSocket；内置限流、API Key、Usage Plans、AWS Lambda 集成及 CloudWatch 监控。</td>
+<td align="left">AWS 全家桶架构</td>
+</tr>
+<tr>
+<td align="left"></td>
+<td align="left"><strong>Azure API Management</strong></td>
+<td align="left">强大的 OAuth 与 OpenID Connect 支持；基于策略（Policy-based）的配置；提供 API 文档开发者门户。</td>
+<td align="left">Azure 生态系统</td>
+</tr>
+<tr>
+<td align="left"></td>
+<td align="left"><strong>Google Cloud Endpoints</strong></td>
+<td align="left">与 GCP 深度集成；原生强力支持 gRPC；支持自动生成 OpenAPI 文档。</td>
+<td align="left">GCP 生态系统</td>
+</tr>
+<tr>
+<td align="left"><strong>开源方案</strong><br><em>(掌控力强，适合私有部署)</em></td>
+<td align="left"><strong>Kong</strong></td>
+<td align="left">基于 NGINX 开发；拥有丰富的插件生态系统；同时支持传统部署与服务网格（Service Mesh）。</td>
+<td align="left">通用高扩展性需求</td>
+</tr>
+<tr>
+<td align="left"></td>
+<td align="left"><strong>Tyk</strong></td>
+<td align="left">原生支持 GraphQL；内置 API 数据分析；具备多数据中心支持能力。</td>
+<td align="left">GraphQL 优先或多机房架构</td>
+</tr>
+<tr>
+<td align="left"></td>
+<td align="left"><strong>Express Gateway</strong></td>
+<td align="left">基于 JavaScript/Node.js；轻量级且对开发者友好。</td>
+<td align="left">Node.js 微服务体系 <em>(注：社区维护度较低)</em></td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2>核心引用与背景解析（Key Quotes &amp; Context）</h2>
+<h3>1. 关于网关的角色定位</h3>
+<blockquote>
+<p><strong>原文</strong>：&quot;Think of it as the front desk at a luxury hotel. Just as hotel guests don&#39;t need to know where the housekeeping office or maintenance room is located, clients shouldn&#39;t need to know about the internal structure of your microservices.&quot;</p>
+</blockquote>
+<ul>
+<li><strong>背景解析</strong>：此引用生动阐述了 API 网关的核心价值——<strong>隐藏内部复杂性</strong>。网关在客户端与微服务之间建立隔离层，保护内部微服务架构变更不影响外部 API 契约。</li>
+</ul>
+<h3>2. 关于面试中的常见误区</h3>
+<blockquote>
+<p><strong>原文</strong>：&quot;Funny enough, I&#39;ll often have candidates introduce a gateway in a system design interview and emphasize that it will do all this middleware stuff but never mention the core reason they need it -- request routing.&quot;</p>
+</blockquote>
+<ul>
+<li><strong>背景解析</strong>：作者指出了系统设计面试中的普遍失误：许多候选人一提到 API 网关就大谈身份验证、限流等中间件功能，却忘记了引入网关最根本的原因是<strong>进行请求路由</strong>。面试时必须首先说明路由职责。</li>
+</ul>
+<h3>3. 关于架构选型的原则</h3>
+<blockquote>
+<p><strong>原文</strong>：&quot;The TLDR is: use it when you have a microservices architecture and don&#39;t use it when you have a simple client-server architecture.&quot;</p>
+</blockquote>
+<ul>
+<li><strong>背景解析</strong>：API 网关并非万能钥匙。在简单的单体应用或架构单一的系统中引入网关属于无谓增加系统复杂度；只有在存在多个微服务的复杂系统中， API 网关的收益才大于其带来的复杂度。</li>
+</ul>
+<h3>4. 关于面试时间管理的“黄金法则”</h3>
+<blockquote>
+<p><strong>原文</strong>：&quot;Get it down, say it will handle routing and middleware, and move on.&quot;</p>
+</blockquote>
+<ul>
+<li><strong>背景解析</strong>：这是对候选人在面试中处理 API 网关的终极建议。API 网关的技术细节通常不是面试官考核的重点，候选人应快速说明其用途并继续推进核心业务设计，切忌在网关上停留超过 30 秒。</li>
+</ul>
+<hr>
+<h2>面试实战指导与行动建议（Actionable Insights）</h2>
+<pre><code>                     ┌───────────────────────────┐
+                     │ 是否属于微服务架构系统？   │
+                     └─────────────┬─────────────┘
+                                   │
+                         ┌─────────┴─────────┐
+                         ▼                   ▼
+                     【 是 】             【 否 】
+                         │                   │
+                         ▼                   ▼
+           ┌───────────────────────────┐  ┌──────────────────────────┐
+           │ 引入 API 网关              │  │ 勿用 API 网关            │
+           │ (表达: 负责路由+基础中间件) │  │ (直接使用简单客户端-服务端│
+           └─────────────┬─────────────┘  │  架构，避免增加复杂性)   │
+                         │                └──────────────────────────┘
+                         ▼
+           ┌───────────────────────────┐
+           │ 快速通过 (＜30s)          │
+           │ 转移至核心业务系统设计     │
+           └───────────────────────────┘
+</code></pre>
+<ol>
+<li><strong>先讲路由，再讲中间件</strong>：在面试中介绍 API 网关时，第一时间说明“我引入 API 网关主要用于请求路由”，然后再补充“同时处理身份验证和限流等基础中间件”。</li>
+<li><strong>把握 30 秒原则</strong>：切勿在网关的具体实现细节（如各种复杂的中间件配置）上花费过多时间。API 网关不是系统设计面试中最有价值的核心点，在网关上停留太久是极其常见的扣分项。</li>
+<li><strong>简化画图表示</strong>：在画系统架构图时，无需将负载均衡器与 API 网关拆分为过于复杂的层级，通常使用单个方框代表“API 网关与负载均衡”即可，以便将精力聚焦于后端服务、数据模型及扩展性设计。</li>
+</ol>
+</article></main></body></html>

@@ -27,13 +27,17 @@ const PLACEHOLDER = {
   question: '这道面试题的要点、自己的答法…',
   review: '今天的总结、明天要注意什么…',
   item: '学到了什么、有什么感想…',
+  dsa: '今天的 pattern 和题整体：学到了什么、哪里还不懂、还要再练什么…',
+  reading: '这篇讲义：学到了什么、哪里还不懂、做题时用在哪里…',
 };
-// heading text for the generated .md: keep links to websites (LeetCode, GitHub), drop links into this repo
-const mdLabel = p => p.split(/\s*资料：/)[0].replace(/\[([^\]]+)\]\(([^)]*)\)/g, (m, t, u) => (/^https?:/.test(u) ? m : t))
-  .replace(/[☐☑]/g, '').replace(/\s+/g, ' ').trim();
+// heading text for the generated .md: keep links to websites (LeetCode, GitHub), drop links into this repo and the
+// （本地连接 · Summary） after a Hello Interview page
+const mdLabel = p => p.split(/\s*资料：/)[0].replace(/（(?:\[(?:本地连接|Summary)\]\([^)]*\)(?: · )?)+）/g, '').replace(/\[([^\]]+)\]\(([^)]*)\)/g, (m, t, u) => (/^https?:/.test(u) ? m : t))
+  .replace(/[☐☑]/g, '').replace(/\s+/g, ' ').trim().replace(/：$/, '');
 
 function kindOf(time, part, first) {
   if (/\]\(https:\/\/github\.com\/design-gurus\/[^)]*\/patterns\//.test(part)) return 'pattern';
+  if (/^\[[^\]]+\]\(https:\/\/www\.hellointerview\.com\/[^)]*\) \(\d+mins\)/.test(part)) return 'reading';   // Hello Interview's learning pages (13:45)
   if (/\]\(https?:/.test(part) && /[☐☑]/.test(part)) return 'problem';
   if (part.includes('Study%20topics/') || (first && part.includes('资料：'))) return 'topic';
   return { '13:45': 'hi', '15:45': 'project', '17:45': 'review' }[time.slice(0, 5)] || 'item';
@@ -47,11 +51,14 @@ function days(md, inline, esc) {
       const r = line.match(ROW);
       if (!r) continue;
       const [, time, what, cell] = r, items = [];
+      // Data Structure & Algo: one box for the block as a whole, before its pattern and problems (it also holds what was
+      // written under the old morning study topic, which the block no longer has)
+      if (time.startsWith('08:30')) items.push({ k: key(anchor + '.dsa'), kind: 'dsa', html: esc('这一格整体'), md: 'Data Structure & Algo 整体' });
       cell.split('<br>').forEach((part, i) => {
         if (progress.NOTE.test(part)) items.push({ k: key(anchor + '.course'), kind: 'course', md: '网课' });
         else if (/[☐☑]/.test(part) || (i === 0 && part.includes('资料：'))) {
           const kind = kindOf(time, part, i === 0);
-          items.push({ k: key(progress.keyOf(anchor, part)), kind, html: inline(part.replace(/\s*[☐☑]/g, '')), md: (kind === 'topic' && i === 0 ? 'Study topic：' : '') + mdLabel(part) });
+          items.push({ k: key(progress.keyOf(anchor, part)), kind, html: inline(part.replace(/\s*[☐☑]/g, '').replace(/：\s*$/, '')), md: (kind === 'topic' && i === 0 ? 'Study topic：' : '') + mdLabel(part) });
         }
       });
       const questions = time.startsWith('16:45')
@@ -64,7 +71,7 @@ function days(md, inline, esc) {
 }
 
 const style = `<style>
-.notebar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#fff;border:1px solid #dce4ea;border-radius:8px;padding:8px 12px;margin:0 0 12px;font-size:14px}
+.notebar{position:sticky;top:var(--bar-h,0px);z-index:5;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#fff;border:1px solid #dce4ea;border-radius:8px;padding:8px 12px;margin:0 0 12px;font-size:14px}
 .notebar button,.notebar select{padding:4px 12px;border:1px solid var(--accent);border-radius:6px;background:#fff;color:var(--accent);font:inherit;cursor:pointer}
 .notebar #nb-gen{background:var(--accent);color:#fff}
 .notebar button:disabled{opacity:.5;cursor:default}

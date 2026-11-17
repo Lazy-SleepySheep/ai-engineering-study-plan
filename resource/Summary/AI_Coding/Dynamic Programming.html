@@ -1,0 +1,326 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dynamic Programming · Summary</title><link rel="stylesheet" href="../../../Study%20topics/style.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script><style>article{background:#fff;border:1px solid #dce4ea;border-radius:12px;padding:8px 24px 20px}article h1{font-size:26px}article table{margin:10px 0}article li{margin:4px 0}@media(max-width:600px){article{padding:4px 14px 14px}}</style></head><body><main><p class="muted">AI Coding · Common Patterns · <a href="../../../Reports/AI_ENGINEER_TRANSITION_PLAN.html#day-11">Day 11 读</a> · <a href="https://www.hellointerview.com/learn/ai-coding/patterns/dynamic-programming">网页</a> · <a href="../../Hello_Interview_AI_Coding/index.html#dynamic-programming">本地连接</a> · <a href="obsidian://open?vault=JuJu_Workspace&amp;file=02_Knowledge%2FProgramming%2FAI_Coding%2FDynamic%20Programming">在 Obsidian 里打开</a></p><article><h1>Dynamic Programming</h1>
+<h2>2026-11-16 · Dynamic Programming</h2>
+<p>来源：<a href="../../Hello_Interview_AI_Coding/index.html#dynamic-programming">本地连接</a></p>
+<p>NotebookLM 报告：<a href="https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f">https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f</a></p>
+<h1>动态规划（DP）在 AI 辅助编程面试中的应用与应对指南</h1>
+<h2>执行摘要</h2>
+<p>在支持 AI 工具的现代技术面试中，动态规划（Dynamic Programming, DP）是受益最大但也最容易产生隐蔽错误的模式。AI 模型可以在几秒钟内生成干净的自底向上（bottom-up）DP 实现代码，但同时也极易在空字符串、相等字符串或边界条件上产生隐蔽的逻辑缺陷。</p>
+<p>本简报文件基于对 AI 辅助 DP 面试机制的深度分析，指出了应聘者与 AI 的核心分工：<strong>应聘者负责识别模式、抽象定义状态（State）以及验证代码；AI 负责代码撰写、索引推演与基础实现</strong>。通过掌握“恰到重要”的提示词编写技巧、基于测试用例驱动的验证手段（如打印 DP 表及手推 $2 \times 2$ 核心单元格），应聘者能够在面试中展现出对算法的主导权与严谨的工程素养。</p>
+<hr>
+<h2>核心主题详细分析</h2>
+<h3>1. 识别 DP 模式与特征信号</h3>
+<p>在实际面试中，题目通常会包裹在具体的产品需求（如拼写检查器、Diff 工具、任务分配器等）中，绝不会直接提示使用 DP。识别 DP 模式需要捕捉以下四个核心信号：</p>
+<ol>
+<li><strong>目标是寻求“最佳 X”而非“任意 X”</strong>：如最小成本、最大利润、最长连续序列、最短序列或可能的方法总数。最优化问题几乎无一例外地建立在 DP 或贪心算法之上。</li>
+<li><strong>选择具有复合性（Choices compound）</strong>：当前的最佳决策取决于此前已经做出的决策，各个选择之间并非独立。</li>
+<li><strong>状态具有清晰的抽象描述</strong>：能够用一句话概括，例如“给定前 $i$ 个项目和预算 $j$，我们能做到的最优解是……”。</li>
+<li><strong>暴力解法呈指数级增长</strong>：如果尝试所有组合在给定输入规模下过慢，说明存在重叠子问题，可以通过缓存机制进行优化。</li>
+</ol>
+<h4>常见产品包装与底层算法映射</h4>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">真实产品功能包装</th>
+<th align="left">底层对应算法模式</th>
+<th align="left">模式特点与定义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left">为拼写错误的查询推荐 3 个最接近的字典单词</td>
+<td align="left"><strong>编辑距离 (Edit Distance)</strong></td>
+<td align="left">将一个字符串转换为另一个字符串所需的最少单字符编辑（插入、删除、替换）次数。</td>
+</tr>
+<tr>
+<td align="left">计算两个配置文件之间的最小差异 (Diff)</td>
+<td align="left"><strong>最长公共子序列 (LCS)</strong></td>
+<td align="left">在两个序列中以相同相对顺序出现的最大行集合。</td>
+</tr>
+<tr>
+<td align="left">将最高价值的任务子集装入工人的 8 小时班次中</td>
+<td align="left"><strong>背包问题 (Knapsack)</strong></td>
+<td align="left">在预算约束内能装入的最佳物品子集。</td>
+</tr>
+<tr>
+<td align="left">安排互不重叠的预约以最大化收益</td>
+<td align="left"><strong>带权区间调度 (Weighted Interval Scheduling)</strong></td>
+<td align="left">属于背包问题的变体，但物品（时间段）之间存在冲突。</td>
+</tr>
+<tr>
+<td align="left">计算将字符串拆分为已知单词的有效方式数量</td>
+<td align="left"><strong>单词拆分 (Word Break)</strong></td>
+<td align="left">对一个序列进行分解计数或有效性检查。</td>
+</tr>
+</tbody></table></div>
+<h4>DP 与贪心算法（Greedy）的决策辨析</h4>
+<p>并非所有最优化问题都需要 DP。如果局部最优选择<strong>总是</strong>能导出全局最优解，则属于贪心算法范畴。在面试压力下，应聘者需要问自己：<em>“总是选择眼下看起来最好的选项，是否会导致错过后续更好的整体解答？”</em> 如果答案是“是”，则必须使用 DP；如果答案是“否”，贪心算法即可奏效。如果此处判断错误，AI 将会在错误的战略方向上忠实地构建错误的代码。</p>
+<hr>
+<h3>2. 动态规划的四大核心要素</h3>
+<p>以最简单的 DP 问题——**爬楼梯（Climbing Stairs）**为例：$n$ 阶楼梯，每次可跨 1 或 2 阶，求到达顶部的不同方法数。</p>
+<ul>
+<li>$n=1 \to 1$ 种 (1)</li>
+<li>$n=2 \to 2$ 种 (1+1, 2)</li>
+<li>$n=3 \to 3$ 种 (1+1+1, 1+2, 2+1)</li>
+<li>$n=4 \to 5$ 种 (1+1+1+1, 1+1+2, 1+2+1, 2+1+1, 2+2)</li>
+<li>$n=5 \to 8$ 种</li>
+</ul>
+<p>该序列（1, 2, 3, 5, 8）即为斐波那契数列。到达第 $n$ 阶的最后一步要么是从 $n-1$ 阶跨 1 阶（无重叠），要么是从 $n-2$ 阶跨 2 阶（无重叠）。因此，到达第 $n$ 阶的方法数等于到达 $n-1$ 阶与 $n-2$ 阶的方法数之和。</p>
+<p>直接递归会导致重复计算（如 <code>ways(5)</code> 会多次调用 <code>ways(3)</code> 和 <code>ways(2)</code>），时间复杂度高达 $O(2^n)$。通过记忆化（Memoization）或自底向上制表（Tabulation），可以将工作量降低至 $O(n)$。</p>
+<p>任何 DP 问题都由以下四个部分组成：</p>
+<pre><code>[基本情况 (Base Cases)] ───► [计算顺序 (Evaluation Order)] ───► [递推关系 (Recurrence)]
+                                                                    │
+                                                                    ▼
+                                                            [状态定义 (State)]
+</code></pre>
+<ol>
+<li><strong>状态（State）</strong>：定义表格中每个单元格的物理含义。例如 <code>ways[i] = 到达第 i 阶楼梯的不同方法数</code>。状态应当是一句带有索引的英文/中文句子。<strong>状态定义是人类无法直接外包给 AI 的核心部分</strong>。</li>
+<li><strong>递推关系（Recurrence）</strong>：基于较小子问题的解构建较大问题解的规则。例如：<code>ways[i] = ways[i - 1] + ways[i - 2]</code>。</li>
+<li><strong>基本情况（Base Cases）</strong>：无需计算、直接给出的最底层的边界解。例如：<code>ways[0] = 1</code>（不移动）和 <code>ways[1] = 1</code>（跨一步）。</li>
+<li><strong>计算顺序（Evaluation Order）</strong>：单元格的填充方向。在爬楼梯问题中，每个单元格依赖前两个单元格，因此 evaluation order 为从左到右自底向上填充。</li>
+</ol>
+<hr>
+<h3>3. 人机分工与提示词（Prompting）策略</h3>
+<p>在 AI 辅助面试中，关键在于精准掌握“自己动手”与“交给 AI”的边界：</p>
+<h4>应聘者与 AI 的工作分工表</h4>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">应聘者亲自完成（面试官核心考查点）</th>
+<th align="left">交给 AI 处理（节省时间且不影响考查结果）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left">识别问题属于 DP 模式</td>
+<td align="left">将递推关系转化为代码形式</td>
+</tr>
+<tr>
+<td align="left">抽象定义状态（如“基于前缀的 2D DP 表”）</td>
+<td align="left">选择具体的变量名、数组索引及数组大小</td>
+</tr>
+<tr>
+<td align="left">通过观察确定并命名基本情况（Base Cases）</td>
+<td align="left">实现基本情况的代码初始化</td>
+</tr>
+<tr>
+<td align="left">编写一小组测试用例（包含边界条件）</td>
+<td align="left">编写代码使测试用例通过</td>
+</tr>
+<tr>
+<td align="left">手动推演 DP 表中的 4 个核心单元格</td>
+<td align="left">根据要求打印完整的已填充 DP 表以供对比</td>
+</tr>
+<tr>
+<td align="left">决定进行空间优化还是时间优化</td>
+<td align="left">实现滚动数组（Rolling Array）、前缀和等优化细节</td>
+</tr>
+</tbody></table></div>
+<h4>提示词的三种层次</h4>
+<ul>
+<li><strong>太模糊（Too vague）</strong>：例如 <code>&quot;Implement edit distance&quot;</code>。AI 会自行决定默认设置。如果默认设置不符合面试题意，应聘者需要调试自己未深入思考的代码；当面试官追问为什么用 2D 表而非 1D 时将无法回答。此外，缺少人类设计的提示词会导致面试官评估的是 AI 而不是应聘者，通常面试官会默认归因于 AI 的救场。</li>
+<li><strong>太具体（Too specific）</strong>：在提示词中用散文把算法细节完全写出（如指定 <code>dp[i][j]</code> 具体的推导逻辑、边界索引 <code>dp[0][j]=j</code> 及返回 <code>dp[m][n]</code>）。AI 的工作退化为单纯的“抄写”。如果提示词中存在一处逻辑错误（如翻转了基本情况），AI 将忠实地实现这一 Bug。</li>
+<li><strong>恰到好处（Just right）</strong>：例如 <code>&quot;Implement edit distance with bottom-up DP. The state should be a 2D table over the prefixes of both strings, with insert, delete, and replace each costing 1.&quot;</code>（使用自底向上 DP 实现编辑距离。状态应为针对两个字符串前缀的 2D 表，插入、删除和替换的成本均为 1）。应聘者指明了模式、维度、成本模型和自底向上的形状，将具体索引和基本情况公式留给 AI，从而保留了验证与把控的主导权。</li>
+</ul>
+<blockquote>
+<p><strong>提示词黄金法则</strong>：指出“是什么”（哪种模式、维度和成本模型），将“怎么做”（精确索引、基本情况公式、返回单元格）留给模型。</p>
+</blockquote>
+<hr>
+<h3>4. 深度实战案例：编辑距离（Edit Distance）</h3>
+<h4>业务场景与手动推演</h4>
+<ul>
+<li><strong>题目包装</strong>：拼写检查器的建议模块（将错误拼写转化为字典最接近单词）。</li>
+<li><strong>口头表达</strong>：“核心是编辑距离，涉及两个字符串和三种操作（插入、删除、替换），成本均为 1。目标是将拼写错误单词转为候选单词的最少操作数。”</li>
+<li><strong>纸上验证（以 KATE 与 SAT 为例）</strong>：<ul>
+<li>KATE $\to$ SAT：替换 K 为 S 得 SATE，删除末尾 E 得 SAT（共 2 次编辑）。由于长度差为 1 且首字母不同，不可能在 1 次编辑内完成。确认为 2。</li>
+</ul>
+</li>
+</ul>
+<h4>状态与基本情况确定</h4>
+<ul>
+<li><strong>状态</strong>：“将一个字符串的前 $i$ 个字符转换为另一个字符串的前 $j$ 个字符所需的最小编辑次数。”</li>
+<li><strong>基本情况</strong>：<ul>
+<li>将空字符串转换为 $j$ 字符字符串：需要 $j$ 次插入（顶行：0, 1, 2, 3...）。</li>
+<li>将 $i$ 字符字符串转换为空字符串：需要 $i$ 次删除（最左列：0, 1, 2, 3, 4...）。</li>
+</ul>
+</li>
+</ul>
+<h4>递推逻辑（Recurrence）</h4>
+<p>对于内部单元格 $(i, j)$，比较第 $i$ 个字符与第 $j$ 个字符：</p>
+<ul>
+<li><strong>若字符相等</strong>：无需操作，成本等于左上方对角线单元格 <code>dp[i-1][j-1]</code>。</li>
+<li><strong>若字符不相等</strong>：取以下三种操作的最小值加 1：<ol>
+<li><strong>替换（Replace）</strong>：<code>1 + dp[i-1][j-1]</code>（左上方对角线）。</li>
+<li><strong>删除（Delete）</strong>：<code>1 + dp[i-1][j]</code>（正上方）。</li>
+<li><strong>插入（Insert）</strong>：<code>1 + dp[i][j-1]</code>（正左方）。</li>
+</ol>
+</li>
+</ul>
+<h4>KATE 到 SAT 的 DP 状态映射表</h4>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left"></th>
+<th align="left"><strong>$\emptyset$</strong></th>
+<th align="left"><strong>S</strong></th>
+<th align="left"><strong>A</strong></th>
+<th align="left"><strong>T</strong></th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>$\emptyset$</strong></td>
+<td align="left"><strong>0</strong></td>
+<td align="left">1</td>
+<td align="left">2</td>
+<td align="left">3</td>
+</tr>
+<tr>
+<td align="left"><strong>K</strong></td>
+<td align="left">1</td>
+<td align="left"><strong>1</strong></td>
+<td align="left">2</td>
+<td align="left">3</td>
+</tr>
+<tr>
+<td align="left"><strong>A</strong></td>
+<td align="left">2</td>
+<td align="left">2</td>
+<td align="left"><strong>1</strong></td>
+<td align="left">2</td>
+</tr>
+<tr>
+<td align="left"><strong>T</strong></td>
+<td align="left">3</td>
+<td align="left">3</td>
+<td align="left">2</td>
+<td align="left"><strong>1</strong></td>
+</tr>
+<tr>
+<td align="left"><strong>E</strong></td>
+<td align="left">4</td>
+<td align="left">4</td>
+<td align="left">3</td>
+<td align="left"><strong>2</strong></td>
+</tr>
+</tbody></table></div>
+<p><em>注：粗体数字代表一条最优编辑路径（替换 K $\to$ S，保留 A，保留 T，删除 E），右下角单元格 <code>2</code> 即为算法返回值。</em></p>
+<hr>
+<h3>5. 代码验证与调试策略</h3>
+<p>当 AI 生成如下标准代码后：</p>
+<pre><code class="language-python">def min_distance(s: str, t: str) -&gt; int:
+    m, n = len(s), len(t)
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+
+    for i in range(m + 1):
+        dp[i][0] = i
+    for j in range(n + 1):
+        dp[0][j] = j
+
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if s[i - 1] == t[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1]
+            else:
+                dp[i][j] = 1 + min(
+                    dp[i - 1][j - 1],
+                    dp[i - 1][j],
+                    dp[i][j - 1],
+                )
+
+    return dp[m][n]
+</code></pre>
+<p>在面试压力下逐行检查代码效率低下，应采取以下两种验证策略：</p>
+<h4>策略一：打印 DP 表并验证 $2 \times 2$ 顶格</h4>
+<p>要求 AI 打印出填充好的表格，手动核对左上角 $2 \times 2$ 区域：</p>
+<ul>
+<li><code>dp[0][0] = 0</code>（空到空）</li>
+<li><code>dp[0][1] = 1</code>（空到 &#39;s&#39;，插入 1 次）</li>
+<li><code>dp[1][0] = 1</code>（&#39;k&#39; 到空，删除 1 次）</li>
+<li><code>dp[1][1]</code>：&#39;k&#39; 与 &#39;s&#39; 不匹配 $\to 1 + \min(dp[0][0], dp[0][1], dp[1][0]) = 1 + \min(0, 1, 1) = 1$。</li>
+</ul>
+<p><strong>定位故障规律</strong>：如果首行或首列错误，属于<strong>基本情况 Bug</strong>；若首行首列正确但 <code>dp[1][1]</code> 错误，属于<strong>递推关系 Bug</strong>。</p>
+<h4>策略二：测试用例驱动与假设驱动调试</h4>
+<p>使用事先构建的测试用例驱动运行：<code>(&quot;kate&quot;, &quot;sat&quot;) → 2</code>, <code>(&quot;&quot;, &quot;abc&quot;) → 3</code>, <code>(&quot;abc&quot;, &quot;abc&quot;) → 0</code>。</p>
+<ul>
+<li>当测试失败时，<strong>切忌直接复制失败信息让 AI “修复（fix it）”</strong>，这显得应聘者毫无头绪。</li>
+<li><strong>正确做法</strong>：先形成假设（如：“我认为顶行基本情况存在 Off-by-one 错误，因为 <code>dp[0][1]</code> 比预期高了 1”），然后将包含假设的提示词发送给 AI。</li>
+</ul>
+<hr>
+<h3>6. DP 专属失败模式分析</h3>
+<p>DP 问题的结构性缺陷通常集中在四个位置：基本情况、递推关系、遍历顺序及返回值。AI 在生成代码时常犯以下几类错误：</p>
+<ol>
+<li><strong>近似错误的递推关系（Almost-right recurrence）</strong>：AI 针对类似问题（如误将编辑距离替换为最长公共子序列）生成了教科书式的递推关系，代码可编译运行但逻辑错误。</li>
+<li><strong>多余的维度（Extra dimension）</strong>：当提示词模糊时，AI 为了规避风险会兜圈子添加不必要的维度（如本需 2D 却声明了 <code>dp[i][j][k]</code>）。</li>
+<li><strong>表格尺寸的 Off-by-one 错误</strong>：若状态定义为“前 $i$ 个项目”，需要大小为 $n+1$ 的数组；若定义为“从项目 $i$ 开始”，则需要大小为 $n$。AI 易搞混导致数组越界或少算一步。</li>
+<li><strong>硬编码边缘情况（Hardcoded edge case）</strong>：单测试用例失败时，AI 可能会插入类似 <code>if input.length == 0: return 0</code> 的修补代码，而不是修复底层的递推逻辑。</li>
+<li><strong>DP 螺旋陷入（DP spiral）</strong>：AI 无法纠正递推关系时，倾向于频繁从头重构状态架构，而非修复眼前的索引偏移。在连续生成第三次“尝试不同方法”时，必须主动打断。</li>
+</ol>
+<hr>
+<h3>7. 算法选择决策矩阵</h3>
+<p>面对最优化问题时，应遵循以下决策逻辑：</p>
+<pre><code>                              是否有重叠子问题？
+                                   │
+               ┌───────────────────┴───────────────────┐
+               ▼                                       ▼
+             [ 否 ]                                  [ 是 ]
+               │                                       │
+     局部最优是否保证全局最优？                 决策是否需要枚举所有解？
+       ┌───────┴───────┐                       ┌───────┴───────┐
+       ▼               ▼                       ▼               ▼
+    [ 是 ]          [ 否 ]                  [ 是 ]          [ 否 ]
+      │               │                       │               │
+  ▼贪心算法▼     ▼分治/其它▼               ▼回溯法▼        ▼动态规划▼
+</code></pre>
+<ul>
+<li><strong>贪心算法（Greedy）</strong>：适用于局部最优解总是全局最优解的情况（如按结束时间排序的区间调度、美币面额找零、最小生成树）。贪心算法更简单，应优先尝试寻找反例排除贪心，失败后再考虑 DP。</li>
+<li><strong>回溯法（Backtracking）</strong>：用于<strong>枚举所有</strong>有效解（如“找出所有和为 $k$ 的子集”）；而 DP 用于<strong>优化单一数值或计数</strong>（如“求和为 $k$ 的子集数量”）。</li>
+<li><strong>暴力/模拟（Brute force）</strong>：输入规模极小时（如 $n \le 20$），枚举 $2^n$ 个子集比设计 DP 状态更容易且不易出错。</li>
+<li><strong>图搜索（Graph search）</strong>：当状态具备自然的图结构（如最短路径、可达性）时，BFS 或 Dijkstra 算法比 DP 更易引导 AI 实现。</li>
+</ul>
+<hr>
+<h2>重要引言与语境</h2>
+<h3>引言 1</h3>
+<blockquote>
+<p>&quot;Dynamic programming is the pattern that benefits most from working with AI. The model can produce a clean bottom-up implementation in seconds... Your job in an AI-enabled interview is to point the model at the right recurrence and catch the bugs when it doesn&#39;t.&quot;</p>
+</blockquote>
+<ul>
+<li><strong>语境与深度分析</strong>：此引言揭示了 AI 时代 DP 面试的核心范式转移。写出优雅的自底向上代码不再是衡量能力的主要指标，应聘者的核心价值在于指出正确的递推方向并在 AI 产生隐蔽 Bug 时及时捕获。</li>
+</ul>
+<h3>引言 2</h3>
+<blockquote>
+<p>&quot;You can&#39;t write a recurrence until you&#39;ve named what each cell holds, which is why state definition is the part of DP that humans can&#39;t outsource cleanly to the AI.&quot;</p>
+</blockquote>
+<ul>
+<li><strong>语境与深度分析</strong>：强调了人类在设计 DP 算法时不可替代的作用。状态定义是用自然语言明确每个单元格的物理含义，如果在没有确立状态的情况下直接让 AI 写代码，极易导致模型产生维度混淆或错误的边界假设。</li>
+</ul>
+<h3>引言 3</h3>
+<blockquote>
+<p>&quot;The pattern: name the what (which pattern, which dimensions, which costs), leave the how (exact indices, base case formulas, return cell) to the model.&quot;</p>
+</blockquote>
+<ul>
+<li><strong>语境与深度分析</strong>：定义了与 AI 协作时的“恰到好处”提示词准则。应聘者掌控全局架构（“是什么”），把微观的索引计算与变量控制（“怎么做”）移交给 AI，从而实现效率与主导权的平衡。</li>
+</ul>
+<h3>引言 4</h3>
+<blockquote>
+<p>&quot;I&#39;m going to verify this by checking the table against my hand-trace and by running it against a small set of cases I scaffolded. I&#39;d rather make the code prove itself than try to debug it line by line.&quot;</p>
+</blockquote>
+<ul>
+<li><strong>语境与深度分析</strong>：向面试官展示高级工程素养的标准口头表达。与其在复杂的索引代码中挣扎，不如主动建立测试与打印机制，让代码自行证明其正确性。</li>
+</ul>
+<hr>
+<h2>可操作的洞察与实践指南</h2>
+<h3>1. 核心洞察与应聘者主导权</h3>
+<p>根据对 AI 辅助 DP 面试的综合评估，面试官最关心的考查信号与应聘者的应对策略如下：</p>
+<ul>
+<li><strong>必须亲自掌控“状态定义”</strong>：在 AI 辅助 DP 面试中，应聘者<strong>绝对不能外包给 AI 的环节是定义状态（Defining the state）</strong>。变量命名、数组大小、计算顺序以及将递推转换为代码都可以交给 AI，但抽象定义状态必须由应聘者亲自完成。</li>
+<li><strong>在提示代码前先写测试</strong>：在输入 Prompt 之前，先写下 3~4 个测试用例（包括边界情况，如空字符串、单字符等）。测试用例不仅能作为规范固定需求，还能强迫应聘者在写代码前想清楚基本情况。</li>
+<li><strong>利用“打印 DP 表”进行诊断</strong>：调试 DP 最有效的提示词是命令 AI <code>&quot;Print the dp table&quot;</code>。通过核对左上角 $2 \times 2$ 单元格，可瞬间精确定位是基本情况错误还是递推公式错误。</li>
+<li><strong>警惕并打破 DP 螺旋</strong>：当 AI 连续两次尝试重构代码均宣告失败时，应立即停止继续生成。向面试官口述当前遇到的瓶颈，重新调整提示词中对状态的描述，或者手动编写接下来关键的 10 行代码。</li>
+</ul>
+<h3>2. 推荐进阶练习路线图</h3>
+<p>为了熟练掌握“识别-抽象状态-提示 AI-验证”的闭环，建议按照以下顺序练习经典题目：</p>
+<ol>
+<li><strong>打家劫舍 (House Robber)</strong>：最经典的 1D DP 问题，用于练习基础的六步方法论。</li>
+<li><strong>不同路径 (Unique Paths)</strong>：首个标准的 2D DP 网格问题，具备极干净的递推关系。</li>
+<li><strong>单词拆分 (Word Break)</strong>：状态设计不太直观，非常接近实际 AI 编程面试中掩盖的复杂业务逻辑。</li>
+<li><strong>重叠 job 排期的最大利润 (Maximum Profit in Job Scheduling)</strong>：结合了排序、二分查找与 DP，代表了调度问题的典型面试考点。</li>
+<li><strong>最长递增子序列 (Longest Increasing Subsequence)</strong>：用于练习识别模式，并区分 $O(n^2)$ 朴素 DP 与优化解法的场景。</li>
+</ol>
+</article></main></body></html>

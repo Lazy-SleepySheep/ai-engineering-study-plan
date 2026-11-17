@@ -1,0 +1,217 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>API Design · Summary</title><link rel="stylesheet" href="../../../Study%20topics/style.css"><style>article{background:#fff;border:1px solid #dce4ea;border-radius:12px;padding:8px 24px 20px}article h1{font-size:26px}article table{margin:10px 0}article li{margin:4px 0}@media(max-width:600px){article{padding:4px 14px 14px}}</style></head><body><main><p class="muted">System Design · Core Concepts · <a href="../../../Reports/AI_ENGINEER_TRANSITION_PLAN.html#day-04">Day 04 读</a> · <a href="https://www.hellointerview.com/learn/system-design/core-concepts/api-design">网页</a> · <a href="../../Hello_Interview_System_Design/HTML/008%20API%20Design%20for%20System%20Design%20Interviews%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a> · <a href="obsidian://open?vault=JuJu_Workspace&amp;file=02_Knowledge%2FProgramming%2Fsystem_design%2FAPI%20Design">在 Obsidian 里打开</a></p><article><h1>API Design</h1>
+<h2>2026-11-13 · API Design</h2>
+<p>来源：<a href="https://www.hellointerview.com/learn/system-design/core-concepts/api-design">https://www.hellointerview.com/learn/system-design/core-concepts/api-design</a></p>
+<p>NotebookLM 报告：<a href="https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f">https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f</a></p>
+<h1>系统设计面试中的 API 设计指南简报</h1>
+<p>本简报旨在系统梳理系统设计面试中 API 设计的核心原则、协议选择、常用设计模式及安全规范。API 设计是系统设计面试中“交付框架”（Delivery Framework）的关键环节，主要用于定义客户端与系统之间的交互方式。</p>
+<hr>
+<h2>执行摘要</h2>
+<p>在系统设计面试中，API 设计通常占用约 5 分钟的时间。大多数面试官并不要求 API 设计达致完美，而是希望看到候选人具备合理的 API 设计能力，并能迅速过渡到更复杂的分布式系统架构探讨中。然而，对于前端、产品角色、初级岗位或特定注重 API 的公司（例如 Scale AI、Atlassian），API 设计可能会被深入追问。</p>
+<p>高质量的 API 设计遵循高度可预测的模式：<strong>选择合适的协议、清晰定义资源、规范数据输入输出格式，并结合幂等性与安全性保障</strong>。在没有特殊需求的情况下，应默认选择 REST 协议；而在内部微服务高性能通信或复杂客户端多变查询场景下，则可灵活选用 RPC (gRPC) 或 GraphQL。</p>
+<hr>
+<h2>核心主题详细分析</h2>
+<h3>1. API 协议选择与适用场景</h3>
+<p>面试中通常涉及三种主要的 API 通信协议：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">协议类型</th>
+<th align="left">核心机制与特点</th>
+<th align="left">最佳适用场景</th>
+<th align="left">关键考量 / 权衡</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>REST</strong></td>
+<td align="left">基于标准 HTTP 方法（GET, POST, PUT, DELETE），围绕 URL 标识的资源进行操作。</td>
+<td align="left">Web 和移动应用的标准 CRUD 操作、公共 API（默认首选）。</td>
+<td align="left">简单易用，工具生态成熟，适合 90% 的场景。</td>
+</tr>
+<tr>
+<td align="left"><strong>GraphQL</strong></td>
+<td align="left">单一端点，使用查询语言（Query Language），由客户端精确指定所需的数据字段。</td>
+<td align="left">多端差异化需求（如移动端需要精简数据，Web 端需要详细分析数据），避免数据“过度获取”（Over-fetching）或“获取不足”（Under-fetching）。</td>
+<td align="left">增加系统复杂度（需解析查询、校验 Schema）；存在 <strong>N+1 查询问题</strong>（需使用 Dataloader/批处理解决）；需字段级权限控制。</td>
+</tr>
+<tr>
+<td align="left"><strong>RPC / gRPC</strong></td>
+<td align="left">以“动作/过程”为中心（如 <code>checkPermission</code>），采用二进制序列化（Protocol Buffers）与 HTTP/2 传输。</td>
+<td align="left">内部微服务间通信、高性能要求场景、多语言（Polyglot）环境、需要双向流传输的场景。</td>
+<td align="left">效率远高于 JSON-over-HTTP；提供编译时类型安全。注：Apache Thrift 也是一种常见的 RPC 框架。</td>
+</tr>
+</tbody></table></div>
+<p><em>注：对于通知、聊天或实时更新等实时功能，应选用 WebSockets 或服务器发送事件（SSE）等持久连接协议，而非传统 API。</em></p>
+<hr>
+<h3>2. REST 资源建模与 HTTP 语义</h3>
+<h4>(1) 资源建模（Resource Modeling）</h4>
+<p>REST 的核心是将系统中的**实体（Entities）**建模为资源。</p>
+<ul>
+<li><p><strong>命名规范</strong>：资源必须使用<strong>复数名词</strong>表示“事物”（Things），而非“动作”（Actions）。例如：使用 <code>/events</code> 和 <code>/bookings</code>，而非 <code>/getEvents</code> 或 <code>/createBooking</code>。</p>
+</li>
+<li><p><strong>资源层级与关系</strong>：</p>
+<ul>
+<li><strong>路径参数（Path Parameters）</strong>：用于表示必填的父子关系或特定资源标识（例如：<code>/events/{id}/tickets</code> 或 <code>/events/123</code>）。</li>
+<li><strong>查询参数（Query Parameters）</strong>：用于表示可选的筛选、排序或分页条件（例如：<code>/tickets?event_id=123&amp;section=VIP</code>）。</li>
+</ul>
+</li>
+<li><p>Ticketmaster 示例 API 设计：*</p>
+</li>
+</ul>
+<pre><code>GET  /events                    # 获取所有活动列表
+GET  /events/{id}               # 获取特定活动详情
+GET  /venues/{id}               # 获取特定场馆详情
+GET  /events/{id}/tickets       # 获取某活动的可用门票
+POST /events/{id}/bookings     # 为某活动创建新订购
+GET  /bookings/{id}             # 获取特定订购详情
+</code></pre>
+<h4>(2) HTTP 方法与幂等性（Idempotency）</h4>
+<p>幂等性指多次重复执行同一请求，系统最终状态是否保持一致。</p>
+<pre><code>+--------+------------------------------------+--------+--------+
+| HTTP方法| 功能说明                            | 安全性 | 幂等性 |
++--------+------------------------------------+--------+--------+
+| GET    | 获取数据，不改变服务器状态           | 是     | 是     |
+| POST   | 创建新资源，由服务器分配 ID          | 否     | 否     |
+| PUT    | 替换整个资源；若不存在则创建         | 否     | 是     |
+| PATCH  | 局部更新资源                       | 否     | 不保证 |
+| DELETE | 删除资源                           | 否     | 是     |
++--------+------------------------------------+--------+--------+
+</code></pre>
+<ul>
+<li><strong>GET</strong>：仅读取，多次调用结果一致。</li>
+<li><strong>POST</strong>：非幂等，网络重试可能导致重复创建（如重复下单）。</li>
+<li><strong>PUT</strong>：幂等，使用相同数据多次覆盖，最终状态相同。</li>
+<li><strong>PATCH</strong>：不保证幂等（如“把邮箱修改为 X”是幂等的，但“追加列表元素”是非幂等的）。</li>
+<li><strong>DELETE</strong>：幂等，首次删除返回 <code>204 No Content</code>，后续重复调用可能返回 <code>404 Not Found</code>，但服务器最终资源被删除的状态不变。</li>
+</ul>
+<h4>(3) 传递数据与返回格式</h4>
+<ul>
+<li><strong>数据输入</strong>：<ul>
+<li><strong>Path Parameters</strong>：结构化标识，决定访问哪个端点。</li>
+<li><strong>Query Parameters</strong>：修饰符，改变端点行为（第一项用 <code>?</code>，后续用 <code>&amp;</code> 连接）。</li>
+<li><strong>Request Body</strong>：复杂 payload，适合传输敏感或大量数据（如 JSON 结构）。</li>
+</ul>
+</li>
+<li><strong>数据返回</strong>：由状态码与响应体（通常为 JSON）组成。<ul>
+<li>常见状态码分类：<code>200</code>（成功）、<code>201</code>（已创建）、<code>400</code>（客户端请求错误）、<code>401</code>（需要身份验证）、<code>404</code>（资源未找到）、<code>500</code>（服务器错误）。面试中重点在于区分客户端错误（4xx）与服务器错误（5xx）。</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h3>3. API 设计九大核心原则</h3>
+<ol>
+<li><strong>围绕资源而非动作设计</strong>：暴露系统中的实体，用 HTTP 方法表达具体操作。</li>
+<li><strong>全局保持一致性</strong>：统一命名约定、参数名称及响应格式（例如统一使用 <code>status</code>，避免混用 <code>state</code>）。</li>
+<li><strong>遵循最小惊奇原则（Principle of Least Surprise）</strong>：严格遵循 HTTP 语义（如 GET 不修改数据，200 即代表成功，不可在 200 响应体中返回 <code>&quot;success&quot;: false</code>）。</li>
+<li><strong>保持 API 无状态（Stateless）</strong>：每个请求必须包含处理所需的全部信息（如 Auth Token、参数）。无状态便于水平扩展。</li>
+<li><strong>保证重试安全性</strong>：面对网络故障，设计幂等机制（如为 POST 请求引入幂等键）。</li>
+<li><strong>对所有可增长的集合进行分页</strong>：提供分页支持并设置单页数量上限限制（ limit cap），防止大查询压垮数据库。</li>
+<li><strong>默认启用安全防护</strong>：身份验证应为默认选项（公开端点需显式标记），并配合授权校验与速率限制。</li>
+<li><strong>无平滑平滑演进（避免破坏性变更）</strong>：新增字段是安全的，但重命名、删除或变更已有字段属于破坏性变更，需制定版本控制策略。</li>
+<li><strong>提供具可操作性的错误信息</strong>：使用正确的 HTTP 状态码，并在响应体中提供机器可读的代码与人类可读的信息。</li>
+</ol>
+<hr>
+<h3>4. 常见 API 模式</h3>
+<h4>(1) 分页模式（Pagination）</h4>
+<ul>
+<li><strong>基于偏移量的分页（Offset-based）</strong>：<ul>
+<li>语法：<code>/events?offset=20&amp;limit=10</code></li>
+<li>特点：简单直观，适用于大多数普通场景。</li>
+<li>缺点：在大数据集或数据频繁插入时，跳页会导致重复或遗漏数据。</li>
+</ul>
+</li>
+<li><strong>基于游标的分页（Cursor-based）</strong>：<ul>
+<li>语法：<code>/events?cursor=cmd9atj3p000007ky19w1dpy2&amp;limit=10</code></li>
+<li>特点：游标是特定记录的编码引用（如 ID 或时间戳）。在实时数据或高并发场景下更稳定，但无法直接跳转到指定页码（如“跳至第 5 页”）。</li>
+</ul>
+</li>
+</ul>
+<h4>(2) 幂等键（Idempotency Keys）</h4>
+<p>针对支付、订订等非幂等的 <code>POST</code> 操作，客户端在请求头中生成并发送唯一的 UUID：</p>
+<pre><code class="language-http">POST /events/123/bookings
+Idempotency-Key: 8e03978e-740c-4c2e-abd1-52f427d5c177
+</code></pre>
+<p>服务器会将该 Key 与首次处理结果一并存储。当携带相同 Key 的重试请求到达时，服务器直接返回已存储的响应，避免二次扣费或重复订票。</p>
+<h4>(3) 统一错误响应信封（Consistent Error Envelope）</h4>
+<p>通过统一的响应结构，方便客户端集中处理错误：</p>
+<pre><code class="language-json">{
+  &quot;error&quot;: {
+    &quot;code&quot;: &quot;SEAT_UNAVAILABLE&quot;,
+    &quot;message&quot;: &quot;Section VIP has only 1 seat remaining&quot;
+  }
+}
+</code></pre>
+<h4>(4) 版本控制策略</h4>
+<ul>
+<li><strong>URL 版本控制（推荐）</strong>：如 <code>/v1/events</code> 或 <code>/v2/events</code>。显示直观，路由处理简单，面试中优先使用。</li>
+<li><strong>Header 版本控制</strong>：如 <code>Accept-Version: v2</code> 或 <code>API-Version: 2</code>。保持 URL 干净，但不够直观。</li>
+</ul>
+<hr>
+<h3>5. 安全考量</h3>
+<h4>(1) 认证（Authentication）与授权（Authorization）</h4>
+<ul>
+<li><strong>认证</strong>：确认请求者的身份（你是谁）。</li>
+<li><strong>授权</strong>：确认该身份是否有权执行特定操作（你能做什么）。</li>
+</ul>
+<h4>(2) API Keys vs JWT Tokens</h4>
+<pre><code>+----------------+----------------------------------------+----------------------------------------+
+| 特性           | API Keys                               | JWT (JSON Web Tokens)                  |
++----------------+----------------------------------------+----------------------------------------+
+| 机制           | 长期随机字符串，需服务器查库校验         | 自包含签名 Token，编入用户信息与过期时间|
+| 状态存取       | 有状态（需数据库查找）                 | 无状态（基于密钥校验签名，无需查库）     |
+| 最佳适用场景   | 服务间通信、第三方开发者 API 访问       | 用户会话管理（Web / 移动端应用）       |
++----------------+----------------------------------------+----------------------------------------+
+</code></pre>
+<h4>(3) 基于角色的访问控制（RBAC）</h4>
+<p>系统将权限赋予角色，再将角色赋予用户。API 收到请求后需进行双重校验：</p>
+<ol>
+<li>用户是否已通过身份验证（有效 JWT）？</li>
+<li>用户是否有权操作此资源（如：普通用户只能取消自己的订单，管理员可操作所有订单）。</li>
+</ol>
+<h4>(4) 速率限制与节流（Rate Limiting &amp; Throttling）</h4>
+<p>在 API 网关层或中间件实现，防止恶意刷接口或偶然超载。超限时返回 HTTP <code>429 Too Many Requests</code>。</p>
+<ul>
+<li><strong>按用户限制</strong>：如认证用户每小时 1000 次请求。</li>
+<li><strong>按 IP 限制</strong>：如未认证请求每小时 100 次。</li>
+<li><strong>按端点限制</strong>：如防抢票端点每分钟最多 10 次尝试。</li>
+</ul>
+<hr>
+<h2>重要引用与上下文</h2>
+<blockquote>
+<p><strong>1. 关于默认协议选择：</strong>
+<em>“Default to REST unless you have a specific reason not to. It&#39;s well-understood, has great tooling, and works for 90% of use cases.”</em></p>
+<p><strong>上下文</strong>：在面试中不要过度复杂化。除非遇到复杂的客户端多变数据提取需求（选 GraphQL）或内部微服务高性能通信（选 RPC），否则统一默认选用 REST。</p>
+</blockquote>
+<blockquote>
+<p><strong>2. 关于面试中的时间分配：</strong>
+<em>“Do your best to not spend more than 5 minutes outlining your APIs in the interview... candidates mess up more often by spending too much time on API design than by underinvesting.”</em></p>
+<p><strong>上下文</strong>：API 设计是面试交付框架的一部分，但面试官的核心考核点通常是后续的分布式系统架构设计。控制 API 环节在 5 分钟内，切忌陷入细节无法自拔。</p>
+</blockquote>
+<blockquote>
+<p><strong>3. 关于原则的应用技巧：</strong>
+<em>“You don&#39;t get points for listing principles in the abstract. You get points for applying them out loud. &#39;I&#39;ll use an idempotency key on this endpoint so a retry can&#39;t double-book the seat&#39; lands far better than a lecture on idempotency.”</em></p>
+<p><strong>上下文</strong>：不要空谈设计原则的定义，而要在设计具体端点时将原则作为决策依据直接说出来，以此体现工程实践经验。</p>
+</blockquote>
+<hr>
+<h2>可操作的洞察与建议</h2>
+<ol>
+<li><p><strong>快速定调与控制时间</strong></p>
+<ul>
+<li>入手时声明：“我将使用 REST API 来定义面向用户的接口”。</li>
+<li>严格将公共 API 列举控制在 3-5 个核心端点，涵盖核心业务流程（如浏览、查询、提交创建）即可，快速过渡到 High-Level Design。</li>
+</ul>
+</li>
+<li><p><strong>主动展示生产级思考（亮眼加分项）</strong></p>
+<ul>
+<li><strong>处理写操作</strong>：在涉及支付、预订的 <code>POST</code> 接口中，主动指出使用 <code>Idempotency-Key</code> 请求头防重试。</li>
+<li><strong>处理读操作</strong>：在列表/集合接口中，主动加上 <code>limit</code> 和 <code>offset</code>（或 <code>cursor</code>）参数，并注明“设置单页上限以保护数据库”。</li>
+<li><strong>处理安全性</strong>：简要说明“用户侧 API 使用 JWT 传递身份上下文；内部微服务通信使用 gRPC 和 API Key”。</li>
+</ul>
+</li>
+<li><p><strong>根据角色定位调整策略</strong></p>
+<ul>
+<li><strong>通用后端/架构岗位</strong>：保持 API 设计简洁、规范，快速切入分布式系统架构。</li>
+<li><strong>前端/产品/初级岗位</strong>：准备接受关于 API 设计的深挖（如字段设计、Presigned URL 实现细节等），需对特定端点的 JSON Request/Response 结构有更精细的描述。</li>
+</ul>
+</li>
+</ol>
+</article></main></body></html>

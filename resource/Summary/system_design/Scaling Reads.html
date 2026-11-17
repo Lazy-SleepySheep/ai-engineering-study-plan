@@ -1,0 +1,230 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Scaling Reads · Summary</title><link rel="stylesheet" href="../../../Study%20topics/style.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script><style>article{background:#fff;border:1px solid #dce4ea;border-radius:12px;padding:8px 24px 20px}article h1{font-size:26px}article table{margin:10px 0}article li{margin:4px 0}@media(max-width:600px){article{padding:4px 14px 14px}}</style></head><body><main><p class="muted">System Design · Patterns · <a href="../../../Reports/AI_ENGINEER_TRANSITION_PLAN.html#day-05">Day 05 读</a> · <a href="https://www.hellointerview.com/learn/system-design/patterns/scaling-reads">网页</a> · <a href="../../Hello_Interview_System_Design/HTML/043%20How%20to%20scale%20reads%20in%20your%20system%20design%20interview%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a> · <a href="obsidian://open?vault=JuJu_Workspace&amp;file=02_Knowledge%2FProgramming%2Fsystem_design%2FScaling%20Reads">在 Obsidian 里打开</a></p><article><h1>Scaling Reads</h1>
+<h2>2026-11-16 · Scaling Reads</h2>
+<p>来源：<a href="../../Hello_Interview_System_Design/HTML/043%20How%20to%20scale%20reads%20in%20your%20system%20design%20interview%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a></p>
+<p>NotebookLM 报告：<a href="https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f">https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f</a></p>
+<h1>系统设计面试中的读取扩展策略（Scaling Reads）简报文档</h1>
+<h2>一、 执行摘要 (Executive Summary)</h2>
+<p>在现代高并发系统设计中，随着用户量从数百增长至数百万，系统面临的主要挑战通常来自高流量的读取请求。读取流量的增长速度远快于写入流量，典型的读写比从 10:1 到 100:1 以上不等。处理海量读取请求并非单纯的代码逻辑优化问题，而是受限于 CPU 核心计算能力、内存容量及磁盘 I/O 速率等物理硬件约束。</p>
+<p>本简报基于《Hello Interview System Design in a Hurry》系列中的读取扩展指南，梳理了解决高并发读取瓶颈的递进式架构策略：<strong>优先在数据库内部进行性能调优</strong>（索引、硬件升级、反范式化及物化视图），<strong>其次进行数据库水平扩展</strong>（只读副本与数据库分片），<strong>最后构建外部缓存层</strong>（应用层缓存、CDN 与边缘缓存）。此外，本简报针对面试中的核心边界场景（如热点 Key 突发流量、缓存击穿惊群效应、即时缓存失效控制等）提供了具体的解法逻辑与权衡标准。</p>
+<hr>
+<h2>二、 核心主题与机制详细分析 (Detailed Analysis of Key Themes)</h2>
+<h3>1. 读取扩展的物理瓶颈与读写失衡</h3>
+<ul>
+<li><strong>读写流量失衡</strong>：在内容密集型应用中，读取操作占绝对主导。以 Instagram 为例，用户打开 Feed 流可能触发 100+ 次数据库读取请求（获取图片元数据、用户信息、点赞数和评论预览），而用户每天可能仅发布 1 张照片（1 次写入）。在 Twitter 和 Amazon 等平台，读写比通常达到 100:1 甚至更高。</li>
+<li><strong>物理约束</strong>：当系统达到物理极限（CPU 指令周期上限、内存容量上限、SSD/机械硬盘磁盘 I/O 限制）时，仅靠重构应用层代码无法解决读取瓶颈，必须引入架构层面的扩展策略。</li>
+</ul>
+<h3>2. 数据库内部优化策略（In-Database Optimization）</h3>
+<p>在添加新的外部基础设施前，应优先榨干现有数据库的性能空间。</p>
+<h4>(1) 索引（Indexing）</h4>
+<ul>
+<li><strong>查找原理</strong>：索引是指向实际数据行的有序查找表。无索引时，数据库执行全表扫描（Full Table Scan），时间复杂度为线性 $O(n)$；有索引时，时间复杂度降至对数 $O(\log n)$（如扫描 1,000,000 行降至仅需查找约 20 个索引条目）。</li>
+<li><strong>常见类型</strong>：B-tree（通用查询最常用）、Hash 索引（精确匹配）、专用索引（全文检索或地理位置查询）。</li>
+<li><strong>应用原则</strong>：针对频繁查询、连接（Join）或排序（Sort）的列添加索引。虽然索引存在写入开销，但在大多数应用中这种忧虑被过度夸大，<strong>索引不足对系统的伤害远大于过度索引</strong>。</li>
+</ul>
+<h4>(2) 硬件升级（Hardware Upgrades / Vertical Scaling）</h4>
+<ul>
+<li>SSD 可提供比机械硬盘快 10 至 100 倍的随机 I/O 速度；增加 RAM 可使更多数据保留在内存中以避免磁盘读取；更快的 CPU 和更多核心可提升并发处理能力。虽然无法彻底解决扩展性问题，但属于见效最快的垂直扩展方案。</li>
+</ul>
+<h4>(3) 反范式化策略与物化视图（Denormalization &amp; Materialized Views）</h4>
+<ul>
+<li><strong>反范式化（Denormalization）</strong>：范式化旨在通过拆分数据到多表来消除冗余，但在读高并发场景下，多表 Join 查询极其耗费资源。反范式化通过<strong>牺牲存储空间与增加写入复杂度</strong>来换取读取速度。例如，将 <code>users</code>、<code>orders</code> 和 <code>products</code> 表的 Join 查询改写为直接查询包含冗余字段的 <code>order_summary</code> 单表。</li>
+<li><strong>物化视图（Materialized Views）</strong>：用于预先计算昂贵的聚合操作（如商品平均评分）。通过后台任务计算并存储聚合结果，避免每次页面加载时重新执行全表 <code>GROUP BY</code> 关联计算。</li>
+</ul>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">优化维度</th>
+<th align="left">优势</th>
+<th align="left">劣势/权衡 (Trade-offs)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>索引</strong></td>
+<td align="left">将查询复杂度从 $O(n)$ 降至 $O(\log n)$</td>
+<td align="left">占用额外存储空间，轻微增加写入开销</td>
+</tr>
+<tr>
+<td align="left"><strong>硬件升级</strong></td>
+<td align="left">部署简单，无需修改系统架构与代码</td>
+<td align="left">存在物理上限，成本高，无法从根本上解决水平扩展问题</td>
+</tr>
+<tr>
+<td align="left"><strong>反范式化</strong></td>
+<td align="left">避免复杂的 Join 操作，显著降低读取延迟</td>
+<td align="left">数据冗余，更新数据时需同步多处，增加写入复杂性</td>
+</tr>
+<tr>
+<td align="left"><strong>物化视图</strong></td>
+<td align="left">预计算大表聚合数据，极大地提升复杂分析查询效率</td>
+<td align="left">结果具有最终一致性，需后台任务重新计算或维护更新</td>
+</tr>
+</tbody></table></div>
+<h3>3. 数据库水平扩展策略 (Horizontal Database Scaling)</h3>
+<p>当单台数据库服务器经调优后仍无法承载负载（通用经验法则：在建立适当索引的前提下，读取请求超过 <strong>50,000 - 100,000 QPS</strong> 时），需考虑水平扩展。</p>
+<h4>(1) 只读副本（Read Replicas）</h4>
+<ul>
+<li><strong>主从架构（Leader-Follower Replication）</strong>：所有写入请求发送至主库（Primary/Leader），主库将数据复制到多个只读副本（Secondary/Follower），读取请求均匀分发至各副本。同时提供数据冗余与故障转移能力。</li>
+<li><strong>复制模式与延时</strong>：<ul>
+<li><em>同步复制</em>：保证数据强一致性，但引入更高的写入延迟。</li>
+<li><em>异步复制</em>：写入性能高、延迟低，但存在<strong>复制延迟（Replication Lag）</strong>，可能导致用户无法立即读取到自己刚提交的修改。</li>
+</ul>
+</li>
+</ul>
+<h4>(2) 数据库分片（Database Sharding）</h4>
+<p>只读副本无法减少单库的数据集体积。当数据集过大导致索引查询变慢时，分片可将数据物理切分到多个独立数据库中：</p>
+<ul>
+<li><strong>功能分片（Functional Sharding）</strong>：按业务领域或功能拆分（如用户数据与商品数据独立存储在不同数据库）。</li>
+<li><strong>地理分片（Geographic Sharding）</strong>：按地理位置拆分（如美国用户数据与欧洲用户数据分别存放在各自区域的数据库），降低本地用户的访问延迟。</li>
+<li><em>注意</em>：分片显著增加了运维复杂度，本质上偏向写入扩展技术。对大多数读取扩展问题，缓存通常是更高效的替代方案。</li>
+</ul>
+<h3>4. 外部缓存层设计 (External Caching Layers)</h3>
+<p>缓存利用大多数应用极度倾斜的访问模式（如少量热点内容被反复访问），将频繁读取的数据置于内存（RAM）中，实现亚毫秒级（Sub-millisecond）响应。</p>
+<pre><code>[客户端/用户] 
+     │
+     ▼
+[CDN / 边缘节点]  ── (缓存命中: &lt;10ms 延迟)
+     │
+     ▼ (缓存未命中 / 动态请求)
+[应用层缓存 (Redis/Memcached)] ── (缓存命中: &lt;1ms 延迟)
+     │
+     ▼ (缓存未命中)
+[主数据库 / 只读副本] ── (读取磁盘/索引: 数十毫秒)
+</code></pre>
+<h4>(1) 应用层缓存（Application-Level Caching）</h4>
+<p>基于 Redis 或 Memcached 部署在应用与数据库之间。</p>
+<ul>
+<li><strong>缓存失效策略（Cache Invalidation Strategies）</strong>：<ul>
+<li><em>基于时间的过期（TTL）</em>：设置固定生存时间。实现简单，但在过期前可能返回旧数据。适合更新规律的数据。</li>
+<li><em>直写失效（Write-through）</em>：写入数据库时同步更新或删除缓存。保证强一致性，但增加写入延迟。</li>
+<li><em>回写失效（Write-behind）</em>：异步队列处理缓存失效。降低写入延迟，但存在短时间数据不一致窗口。</li>
+<li><em>标签失效（Tagged Invalidation）</em>：将缓存项关联标签（如 <code>user:123:posts</code>），更新时按标签批量失效。适用于复杂依赖关系。</li>
+<li><em>版本化 Key（Versioned Keys）</em>：在 Key 中包含版本号，更新时递增版本号使旧 Key 自然失效。</li>
+</ul>
+</li>
+</ul>
+<h4>(2) CDN 与边缘缓存（CDN and Edge Caching）</h4>
+<ul>
+<li>将静态资源及动态 API 响应/数据库查询结果缓存至全球边缘节点（Edge Locations）。</li>
+<li><strong>性能提升</strong>：可将跨国请求延迟从 200ms（如东京到美国弗吉尼亚数据中心）缩短至 10ms 以内，并将源站负载降低 90% 以上。</li>
+<li><strong>适用边界</strong>：仅适用于<strong>多用户共享访问的数据</strong>（如公共帖子、商品目录、搜索结果）；禁止将用户私有数据（如个人偏好设置、私信）放入 CDN 缓存。</li>
+</ul>
+<hr>
+<h2>三、 面试场景应用与深度追问解析 (Interview Scenarios &amp; Deep Dives)</h2>
+<h3>1. 常见面试场景匹配</h3>
+<ul>
+<li><strong>Bitly / 短网址服务</strong>：极端的读多写少场景。短网址映射关系生成后绝不修改。建议使用 Redis 进行无 TTL 的强力缓存，并结合 CDN 处理全球流量，数据库仅用于处理极少数未命中缓存的长尾请求。</li>
+<li><strong>Ticketmaster / 门票预订</strong>：活动详情、场馆信息和座位图属于强读取场景，可进行强缓存；但<strong>实际座位可用状态切勿缓存</strong>，否则会导致超卖。应使用只读副本处理浏览流量，购票写入操作强制走主库。</li>
+<li><strong>News Feed 系统</strong>： Feed 生成属于读取密集型。预先计算活跃用户的 Feed 流，缓存关注用户的近期帖子，结合分页加载。绝大多数用户仅阅读前几条内容，集中缓存最新内容收益巨大。</li>
+<li><strong>YouTube / 视频平台</strong>：视频元数据（标题、描述、缩略图）极少变更，进行强缓存；播放量计数器采用最终一致性（如每隔几分钟批量更新一次，而非实时更新）；缩略图等媒体文件大量依赖 CDN 缓存。</li>
+</ul>
+<h3>2. 补充场景：何时<strong>不应</strong>使用读取扩展/缓存模式</h3>
+<ol>
+<li><strong>写密集型系统</strong>（如 Uber 司机位置追踪，读写比仅 2:1 或 1:1，应优先解决写入扩展）。</li>
+<li><strong>小规模应用</strong>（如用户量仅 1,000，单机索引良好的数据库足以轻松应对 QPS，切忌过度设计）。</li>
+<li><strong>强一致性系统</strong>（如金融交易、库存扣减，需极短 TTL 或严格失效逻辑）。</li>
+<li><strong>实时协作系统</strong>（如 Google Docs，每次按键需要即时可见，缓存会导致同步滞后）。</li>
+</ol>
+<h3>3. 四大核心深度追问（Deep Dives）解析</h3>
+<h4>追问一：“随着数据集增长，原来运行良好的查询突然变慢（如耗时30秒），如何解决？”</h4>
+<ul>
+<li><strong>根本原因</strong>：缺失索引导致数据库对千万级数据执行全表扫描（Full Table Scan）。每次查询读取大量数据块到内存，多个并发查询直接导致数据库 CPU 满载 (100%)。</li>
+<li><strong>解决方案</strong>：<ul>
+<li>在经常查询、过滤（<code>WHERE</code>）、连接（<code>JOIN</code>）或排序（<code>ORDER BY</code>）的列上建立索引。</li>
+<li><strong>复合索引的列顺序</strong>：针对多条件查询（如 <code>status AND created_at</code>），建立复合索引 <code>(status, created_at)</code>。该索引可服务于单独过滤 <code>status</code> 的查询以及同时过滤两者的查询，但<strong>无法</strong>服务于仅过滤 <code>created_at</code> 的查询。</li>
+</ul>
+</li>
+</ul>
+<h4>追问二：“如何处理针对同一个热点 Key 的数百万并发读取（Hot Key Problem）？”</h4>
+<ul>
+<li><strong>根本原因</strong>：传统缓存假设流量均匀分布在大量 Key 上。当数百万用户同时请求同一个 Key（如名人发布的新动态）时，单台缓存服务器的 CPU 与网络带宽将被瞬间挤爆。</li>
+<li><strong>解决方案 1：请求合并（Request Coalescing）</strong>
+在应用服务器内部将针对同一 Key 的并发请求合并为一个。应用服务器仅向后端发起 1 次查询，获取结果后分发给所有等待的请求。这能将后端压力从“用户数”数量级降低至“应用服务器节点数（N）”数量级。</li>
+<li><strong>解决方案 2：缓存 Key 散列（Cache Key Fanout）</strong>
+将单个热点 Key 复制为多份散列 Key（例如追加随机后缀 <code>feed:taylor-swift:1</code> 至 <code>feed:taylor-swift:10</code>）。客户端随机选择一个 Key 进行读取，将 500,000 QPS 的压力打散至 10 个不同的 Key/节点上（每台承载 50,000 QPS）。权衡点在于牺牲部分内存存储并增加了缓存更新时的失效复杂度。</li>
+</ul>
+<h4>追问三：“当热门缓存项过期的瞬间，大量请求同时重建缓存（缓存击穿/惊群效应），如何解决？”</h4>
+<ul>
+<li><strong>根本原因</strong>：缓存过期是瞬时的二进制状态（从有到无）。过期瞬间，数万个并发请求同时遭遇 Cache Miss，瞬间将所有昂贵的多表 Join/聚合查询打到数据库，引发数据库崩溃。</li>
+<li><strong>解决方案 1：分布式锁（Distributed Locks）</strong>
+仅允许获取到锁的第一个请求去数据库重建缓存，其他请求等待。缺点：若重建过程耗时长或失败，会导致大量客户端超时，系统可用性脆弱。</li>
+<li><strong>解决方案 2：概率性提前刷新（Probabilistic Early Refresh）</strong>
+在缓存项尚未彻底过期前，根据剩余生存时间按概率触发后台刷新。例如 TTL 为 60 分钟的 Key：在第 50 分钟时，请求有 1% 概率触发后台刷新；第 55 分钟升至 5%；第 59 分钟升至 20%。将集中冲刷分散在最后 10-15 分钟内完成。</li>
+<li><strong>解决方案 3：后台持续定期刷新（Background Refresh）</strong>
+针对极关键数据，取消基于请求的延迟刷新，改由后台独立进程在缓存到期前（如每 50 分钟）主动重新计算并覆盖缓存，确保用户请求永远命中缓存。</li>
+</ul>
+<h4>追问四：“数据更新要求即时可见时，如何进行缓存失效处理？”</h4>
+<ul>
+<li><strong>方案 1：缓存版本控制（Cache Versioning）</strong>
+通过增加版本号彻底消除缓存失效过程中的竞态条件（Race Conditions）。<ul>
+<li><em>具体实现逻辑</em>（来源于社区最佳实践讨论）：缓存中维护两组 entry：<ol>
+<li><code>Key: entity-id</code> -&gt; <code>Value: version</code></li>
+<li><code>Key: entity-id-version</code> -&gt; <code>Value: actual_data</code></li>
+</ol>
+</li>
+<li>读取流程：应用先读取当前版本号，再拼接成版本化 Key 读取实际数据。若未命中则查库并更新版本 Key。</li>
+<li>更新流程：仅需低成本地递增 <code>entity-id</code> 对应的版本号值。旧版本的缓存自然失效且不可达，避免了同步清除各级缓存的开销与竞态问题。</li>
+</ul>
+</li>
+<li><strong>方案 2：已删除项缓存（Deleted Items Cache）</strong>
+对于复杂 Feed 流或批量数据，逐个失效对应缓存代价极高。维护一个较小的“近期已删除/屏蔽 Item ID”缓存集合。应用获取到缓存的 Feed 流后，快速比对该集合过滤掉已删除项。后续再通过后台任务慢速清除大缓存结构。</li>
+</ul>
+<hr>
+<h2>四、 重要引言与上下文解析 (Important Quotes with Context)</h2>
+<h3>1. 关乎读取扩展本质的物理定律</h3>
+<blockquote>
+<p><strong>引言</strong>：“More often than not, this isn&#39;t a software problem you can debug your way out of - it&#39;s physics. CPU cores can only execute so many instructions per second, memory can only hold so much data, and disk I/O is bounded... When you hit these physical constraints, throwing more code at the problem won&#39;t help.”</p>
+<p><strong>上下文与解析</strong>：文章在讨论 Instagram 和 Twitter 等应用面临的巨量读取流量时指出，高并发引发的系统瘫痪往往不是代码 bug 造成的，而是触碰了硬件物理极限。这句话确立了读取扩展的底层逻辑：必须从系统架构层面（如引入缓存、读写分离、物理分片）去分流，而不是试图通过微观代码重构来解决物理瓶颈。</p>
+</blockquote>
+<h3>2. 关于数据库索引的权衡偏见</h3>
+<blockquote>
+<p><strong>引言</strong>：“You&#39;ll read outdated resources warning about &quot;too many indexes&quot; slowing down writes. While index overhead is real, this fear is dramatically overblown in most applications... under-indexing kills more applications than over-indexing ever will.”</p>
+<p><strong>上下文与解析</strong>：在数据库优化章节中，作者纠正了一个常见的技术误区。许多开发者因害怕影响写入速度而不敢加索引。作者强调在现代硬件下，写入开销在大多数读取密集型应用中完全可控；相反，<strong>索引不足（Under-indexing）导致的全表扫描才是杀死生产环境应用的元凶</strong>。面试官非常看重候选人能否果断地根据查询模式设计索引。</p>
+</blockquote>
+<h3>3. 缓存失效的经典名言延伸</h3>
+<blockquote>
+<p><strong>引言</strong>：“Ideally, your cache TTL should be driven by non-functional requirements around data staleness. If your requirements state &#39;search results should be no more than 30 seconds stale,&#39; that gives you your exact TTL.”</p>
+<p><strong>上下文与解析</strong>：针对“缓存失效是计算机科学两大难题之一”的困境，作者给出了极具操作性的架构指导。缓存 TTL 的设置不应凭空猜测，而应直接由业务对“数据陈旧度（Staleness）”的容忍度这一非功能性需求（NFR）决定。这为面试中的技术选型提供了清晰的决策依据。</p>
+</blockquote>
+<h3>4. 面试主动性与思维路径</h3>
+<blockquote>
+<p><strong>引言</strong>：“A strong candidate identifies read bottlenecks proactively. When you sketch out your API design, pause at endpoints that will get hammered and say something like: &#39;This user profile endpoint will get hit every time someone views a profile... Let me address that in my deep dive.&#39;”</p>
+<p><strong>上下文与解析</strong>：作者分享了系统设计面试的实用应试策略。优秀的候选人不会等待面试官发问，而是在绘制 API 和架构草图时，主动识别出高频读取端点（如用户 Profile），并声明后续的扩展计划。这种前瞻性思维是区分高级工程师与中级工程师的关键指标。</p>
+</blockquote>
+<hr>
+<h2>五、 可操作的行动指南与面试建议 (Actionable Insights)</h2>
+<p>根据文章总结的技术路径，在进行系统设计或应对系统设计面试时，应遵循以下结构化的推演步骤：</p>
+<ol>
+<li><p><strong>第一步：分析读写比（Read/Write Ratio）与 QPS 估算</strong></p>
+<ul>
+<li>明确业务场景是读密集型（如 100:1 的 Twitter/Instagram）还是写密集型（如 1:1 的 Uber 实时定位）。</li>
+<li>计算目标 QPS：若优化索引后的单库读取请求超过 <strong>50,000 - 100,000 QPS</strong>，主动提出扩展方案。</li>
+</ul>
+</li>
+<li><p><strong>第二步：按阶梯策略展开读取扩展方案（严禁跳步骤）</strong></p>
+<ul>
+<li><strong>阶梯 1：单库调优（Database-internal）</strong><ul>
+<li>明确指出需要给哪些列加索引（<code>WHERE</code>/<code>JOIN</code>/<code>ORDER BY</code> 字段），并解释 B-tree 复杂度从 $O(n)$ 到 $O(\log n)$ 的提升。</li>
+<li>对高频复杂的聚合/Join 查询，提出<strong>反范式化</strong>（单表冗余存储）或<strong>物化视图</strong>（预计算）。</li>
+</ul>
+</li>
+<li><strong>阶梯 2：水平扩展（Horizontal Scaling）</strong><ul>
+<li>引入**主从复制只读副本（Read Replicas）<strong>分流读取流量。明确提到</strong>复制延迟（Replication Lag）**及异步复制带来的最终一致性权衡。</li>
+<li>数据集过大时考虑功能分片或地理分片。</li>
+</ul>
+</li>
+<li><strong>阶梯 3：引入外部缓存（External Caching）</strong><ul>
+<li>部署 Redis/Memcached 内存缓存层。</li>
+<li>对公共可共享的内容（如商品页、公共帖子），部署 <strong>CDN 边缘缓存</strong>，将源站流量削减 90% 以上。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p><strong>第三步：主动应对边缘边界问题（Deep Dives 防御）</strong></p>
+<ul>
+<li><em>面对突发热点 Key</em>：主动提出 <strong>请求合并（Request Coalescing）</strong> 或 ** Key 散列（Fanout）**。</li>
+<li><em>面对缓存击穿</em>：采用 <strong>概率性提前刷新（Probabilistic Early Refresh）</strong> 或 <strong>后台定时刷新</strong> 替代脆弱的分布式锁。</li>
+<li><em>面对即时强一致性更新</em>：设计 <strong>缓存版本控制（Cache Versioning）</strong> 方案（更新版本号而非直接清除内容），或使用 <strong>已删除项缓存（Deleted Items Cache）</strong> 进行轻量级过滤。</li>
+</ul>
+</li>
+</ol>
+</article></main></body></html>

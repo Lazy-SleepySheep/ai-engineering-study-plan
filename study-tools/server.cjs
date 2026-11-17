@@ -7,8 +7,9 @@
 //   - GET/POST /api/videos -> 视频链接: list, add (reads title and author from the link), edit, delete, summarize a YouTube video
 //                           with claude -p, 备注 about an author; "Study notes/videos.json", "Study notes/video-summaries/<id>.md"
 //                           and "Study notes/authors.json" (videos.cjs)
-//   - GET/POST /api/thoughts -> 随想笔记: list the notes, add a thought to a note (new or existing), delete a note;
-//                           "Study notes/thoughts/<name>.md" and its index.json (thoughts.cjs)
+//   - GET/POST /api/thoughts -> 随想笔记: list the notes, add a thought to a note (new or existing), delete a note, save a
+//                           pasted image; "Study notes/thoughts/<name>.md", its index.json and images/ (thoughts.cjs)
+//   - GET/POST /api/templates -> the code template of each pattern in 刷题记录's Pattern tab: "Study notes/pattern-templates.json"
 //   - POST /api/sync      -> commit the progress files, the study notes and the videos, pull --rebase, then push unless {push:false}
 //                           (only when a page button is clicked)
 //   - GET  /api/applications, /career-ops/reports/*.html -> jobs applied for per day and their evaluation reports, read live from the
@@ -30,6 +31,7 @@ const TYPES = {
   '.json': 'application/json; charset=utf-8', '.ipynb': 'application/json; charset=utf-8', '.md': 'text/plain; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8', '.yaml': 'text/plain; charset=utf-8', '.csv': 'text/plain; charset=utf-8',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.gif': 'image/gif', '.ico': 'image/x-icon',
+  '.webp': 'image/webp',
 };
 
 function syncMd() {
@@ -53,19 +55,21 @@ function git(log, ...args) {
   }
 }
 
-// The study notes travel with the progress: the drafts of 学习记录, the generated notes (see notes.cjs), the videos (videos.cjs)
-// and the 随想笔记 (thoughts.cjs).
+// The study notes travel with the progress: the drafts of 学习记录, the generated notes (see notes.cjs), the videos (videos.cjs),
+// the 随想笔记 (thoughts.cjs) and the code templates of the Pattern tab.
 const DRAFTS_REL = 'Study notes/drafts.json', VIDEOS_REL = videos.DATA_REL, AUTHORS_REL = videos.AUTHORS_REL;
-const NOTE_PATH = /^Study notes\/(drafts\.json|videos\.json|authors\.json|\d{4}-\d{2}-\d{2} Day \d{2}\.md|video-summaries\/[0-9a-f]{10}\.md|thoughts\/(?:[^/]+\.md|index\.json))$/;
-const synced = f => FILES.includes(f) || NOTE_PATH.test(f);
+const TEMPLATES_REL = 'Study notes/pattern-templates.json';
+const NOTE_PATH = /^Study notes\/(drafts\.json|videos\.json|authors\.json|pattern-templates\.json|\d{4}-\d{2}-\d{2} Day \d{2}\.md|video-summaries\/[0-9a-f]{10}\.md|thoughts\/(?:[^/]+\.md|index\.json))$/;
+const synced = f => FILES.includes(f) || NOTE_PATH.test(f) || thoughts.IMAGE.test(f);
 // every synced path that exists here or is tracked (so a deleted note is committed as deleted)
 function syncPaths(log) {
   const notes = new Set();
   try { for (const f of fs.readdirSync(NOTES_DIR)) notes.add('Study notes/' + f); } catch (_) { /* no notes yet */ }
   try { for (const f of fs.readdirSync(path.join(NOTES_DIR, 'video-summaries'))) notes.add('Study notes/video-summaries/' + f); } catch (_) { /* no summaries yet */ }
   try { for (const f of fs.readdirSync(path.join(NOTES_DIR, 'thoughts'))) notes.add('Study notes/thoughts/' + f); } catch (_) { /* no thoughts yet */ }
+  try { for (const f of fs.readdirSync(path.join(NOTES_DIR, 'thoughts', 'images'))) notes.add('Study notes/thoughts/images/' + f); } catch (_) { /* no images yet */ }
   for (const f of git(log, 'ls-files', '-z', '--', 'Study notes').split('\0')) if (f) notes.add(f);
-  return [...FILES, ...[...notes].filter(f => NOTE_PATH.test(f)).sort()];
+  return [...FILES, ...[...notes].filter(f => NOTE_PATH.test(f) || thoughts.IMAGE.test(f)).sort()];
 }
 
 // 3-way merge per key against the common ancestor, so a key removed on one device is not brought back by the other.
@@ -105,6 +109,8 @@ function resolveConflicts(log, original) {
       if (c.includes(VIDEOS_REL)) videos.save(videos.merge(json(1, VIDEOS_REL), json(2, VIDEOS_REL), json(3, VIDEOS_REL)));
       // author 备注: per author; the same author's 备注 changed on both devices: this device's text wins
       if (c.includes(AUTHORS_REL)) videos.saveAuthors(videos.merge(json(1, AUTHORS_REL), json(2, AUTHORS_REL), json(3, AUTHORS_REL), false));
+      // code templates: per pattern; the same pattern's template changed on both devices: this device's code wins
+      if (c.includes(TEMPLATES_REL)) writeTemplates(videos.merge(json(1, TEMPLATES_REL), json(2, TEMPLATES_REL), json(3, TEMPLATES_REL), false));
       // 随想笔记: thoughts added to the same note on both devices are all kept; then the index is rebuilt from the notes
       for (const f of c.filter(f => f !== thoughts.INDEX_REL && thoughts.PATH.test(f))) {
         const s = thoughts.merge(stage(1, f), stage(2, f), stage(3, f));
@@ -112,9 +118,13 @@ function resolveConflicts(log, original) {
         else fs.writeFileSync(path.join(root, f), s);
       }
       if (c.includes(thoughts.INDEX_REL)) thoughts.writeIndex();
+      // a pasted image is named by its content, so both sides have the same bytes; one side deleted it: keep it
+      for (const f of c.filter(f => thoughts.IMAGE.test(f))) {
+        try { git(log, 'checkout', '--theirs', '--', f); } catch (_) { git(log, 'checkout', '--ours', '--', f); }
+      }
       // the same day's note generated on both devices: keep this device's file. The drafts are merged, so
       // generating it again in 学习记录 puts both devices' text together.
-      for (const f of c.filter(f => f !== DRAFTS_REL && f !== VIDEOS_REL && f !== AUTHORS_REL && !thoughts.PATH.test(f) && NOTE_PATH.test(f))) {
+      for (const f of c.filter(f => f !== DRAFTS_REL && f !== VIDEOS_REL && f !== AUTHORS_REL && f !== TEMPLATES_REL && !thoughts.PATH.test(f) && NOTE_PATH.test(f))) {
         const s = stage(3, f) ?? stage(2, f);
         if (s == null) { git(log, 'rm', '-q', '--cached', '--ignore-unmatch', '--', f); try { fs.unlinkSync(path.join(root, f)); } catch (_) { /* gone */ } }
         else fs.writeFileSync(path.join(root, f), s);
@@ -166,13 +176,18 @@ function allowed(req) {
   return '';
 }
 
-function readBody(req, cb) {
-  let n = 0; const chunks = [];
-  req.on('data', c => { n += c.length; if (n > 256 * 1024) req.destroy(); else chunks.push(c); });
-  req.on('end', () => { try { cb(null, JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch (e) { cb(e); } });
+function readBody(req, cb, max = 256 * 1024) {
+  let n = 0, big = false; const chunks = [];
+  // too big: read the rest without keeping it, then answer (destroying the socket would leave the page without a reply)
+  req.on('data', c => { n += c.length; if (n > max) { big = true; chunks.length = 0; } else if (!big) chunks.push(c); });
+  req.on('end', () => {
+    if (big) return cb(Object.assign(new Error('too big'), { tooBig: true }));
+    try { cb(null, JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch (e) { cb(e); }
+  });
 }
 
-const KEY = /^day-\d{2}\.[a-z0-9]+$/;
+// the timetable's ticks (day-NN.<hash>, day-NN.course) and the Hello Interview problems of 刷题记录 (hi-sd.<slug>, hi-ai.<slug>)
+const KEY = /^(?:day-\d{2}\.[a-z0-9]+|hi-(?:sd|ai)\.[a-z0-9-]+)$/;
 function update(body) {
   const st = progress.load();
   const apply = (key, item) => {
@@ -221,6 +236,22 @@ function writeDrafts(d) {
   const sorted = Object.fromEntries(Object.entries(d).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
   writeAtomic(DRAFTS, JSON.stringify(sorted, null, 1) + '\n');
 }
+// Code templates of 刷题记录's Pattern tab: {pattern: {code, updated}}, pattern being the file name of its page in the repo
+// (hash-maps), one pattern per line so two devices merge cleanly. POST {pattern, code}; empty code removes it
+const TEMPLATES = path.join(root, TEMPLATES_REL);
+function loadTemplates() { try { return JSON.parse(fs.readFileSync(TEMPLATES, 'utf8')); } catch (e) { return {}; } }
+function writeTemplates(all) {
+  const lines = Object.keys(all).sort().map(k => JSON.stringify(k) + ': ' + JSON.stringify(all[k]));
+  writeAtomic(TEMPLATES, lines.length ? '{\n' + lines.join(',\n') + '\n}\n' : '{}\n');
+}
+function saveTemplate(body) {
+  const p = String(body.pattern || '');
+  if (!/^[a-z0-9-]{1,80}$/.test(p)) throw Error('bad pattern');
+  const code = String(body.code == null ? '' : body.code).replace(/\r\n?/g, '\n').slice(0, 100000), all = loadTemplates();
+  if (code.trim()) all[p] = { code, updated: new Date().toISOString() }; else delete all[p];
+  writeTemplates(all);
+  return { ok: true };
+}
 function generateNote(body) {
   const name = String(body.name || ''), md = String(body.markdown || '');
   if (!NOTE_FILE.test(name)) throw Error('bad file name');
@@ -249,6 +280,7 @@ http.createServer((req, res) => {
     if (url.pathname === '/api/notes' && req.method === 'GET') return send(res, 200, noteList());
     if (url.pathname === '/api/videos' && req.method === 'GET') return send(res, 200, { items: videos.list(), authors: videos.loadAuthors() });
     if (url.pathname === '/api/thoughts' && req.method === 'GET') return send(res, 200, { items: thoughts.list() });
+    if (url.pathname === '/api/templates' && req.method === 'GET') return send(res, 200, loadTemplates());
     if (url.pathname === '/api/applications') {
       if (req.method !== 'GET') return send(res, 405, { error: 'read only' });
       const dir = applications.careerOpsDir(root);
@@ -274,10 +306,16 @@ http.createServer((req, res) => {
         videos.handle(body).then(r => send(res, 200, r), e => send(res, 400, { error: e.message }));
       });
     }
-    if (url.pathname === '/api/thoughts') {
+    if (url.pathname === '/api/thoughts') {          // a pasted image comes as base64: up to 10 MB of image
+      return readBody(req, (err, body) => {
+        if (err) return send(res, 400, { error: err.tooBig ? '图片太大（最多 10 MB）' : 'bad json' });
+        try { send(res, 200, thoughts.handle(body)); } catch (e) { send(res, 400, { error: e.message }); }
+      }, 14 * 1024 * 1024);
+    }
+    if (url.pathname === '/api/templates') {
       return readBody(req, (err, body) => {
         if (err) return send(res, 400, { error: 'bad json' });
-        try { send(res, 200, thoughts.handle(body)); } catch (e) { send(res, 400, { error: e.message }); }
+        try { send(res, 200, saveTemplate(body)); } catch (e) { send(res, 400, { error: e.message }); }
       });
     }
     if (url.pathname === '/api/sync') return readBody(req, (err, body) => send(res, 200, sync(!(body && body.push === false))));

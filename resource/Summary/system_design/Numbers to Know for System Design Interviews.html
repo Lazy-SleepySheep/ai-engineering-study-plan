@@ -1,0 +1,213 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Numbers to Know · Summary</title><link rel="stylesheet" href="../../../Study%20topics/style.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script><style>article{background:#fff;border:1px solid #dce4ea;border-radius:12px;padding:8px 24px 20px}article h1{font-size:26px}article table{margin:10px 0}article li{margin:4px 0}@media(max-width:600px){article{padding:4px 14px 14px}}</style></head><body><main><p class="muted">System Design · Core Concepts · <a href="../../../Reports/AI_ENGINEER_TRANSITION_PLAN.html#day-34">Day 34 读</a> · <a href="https://www.hellointerview.com/learn/system-design/core-concepts/numbers-to-know">网页</a> · <a href="../../Hello_Interview_System_Design/HTML/011%20Numbers%20to%20Know%20for%20System%20Design%20Interviews%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a> · <a href="obsidian://open?vault=JuJu_Workspace&amp;file=02_Knowledge%2FProgramming%2Fsystem_design%2FNumbers%20to%20Know%20for%20System%20Design%20Interviews">在 Obsidian 里打开</a></p><article><h1>Numbers to Know for System Design Interviews</h1>
+<h2>2026-11-16 · Numbers to Know for System Design Interviews</h2>
+<p>来源：<a href="../../Hello_Interview_System_Design/HTML/011%20Numbers%20to%20Know%20for%20System%20Design%20Interviews%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a></p>
+<p>NotebookLM 报告：<a href="https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f">https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f</a></p>
+<h1>2025年系统设计面试核心数据与架构决策简报</h1>
+<h2>1. 执行摘要 (Executive Summary)</h2>
+<p>在系统设计面试与工程实践中，依赖陈旧的硬件限制参数（如2015年或2020年的数据）会导致严重的架构误判，从而设计出过度工程化（Over-engineered）的复杂分布式系统。随着现代硬件性能的飞速提升，单机计算、内存与存储能力已发生阶跃性变化。</p>
+<p>本简报基于2025年的最新硬件与系统性能基准，梳理了缓存、数据库、应用服务器和消息队列的核心性能指标、扩展触发条件（Scaling Triggers），以及常见面试误区。核心结论表明：<strong>许多传统上依赖分布式分片或复杂中间件的场景，在现代单机硬件及合理架构下均可高效运行。系统设计的重点已从单纯的“数据量瓶颈”转移到“CPU利用率、每秒操作数（Ops/sec）及网络带宽”等实际瓶颈上。</strong></p>
+<hr>
+<h2>2. 现代硬件能力基准 (Modern Hardware Baseline)</h2>
+<p>技术书籍和旧教程中关于“100GB即需切分数据库”或“避免大对象驻留内存”的假设已不再适用。以下为现代云服务提供商（以AWS为例）的典型硬件规格：</p>
+<ul>
+<li><strong>算力与内存：</strong> <ul>
+<li>通用型实例（如 AWS <code>m6i.32xlarge</code>）：提供 <strong>512 GiB 内存</strong> 和 <strong>128 vCPU</strong>。</li>
+<li>内存优化型实例：<code>x1e.32xlarge</code> 可提供 <strong>4 TB 内存</strong>；更高端的 <code>u-24tb1.metal</code> 可达 <strong>24 TB 内存</strong>。</li>
+</ul>
+</li>
+<li><strong>存储容量：</strong> <ul>
+<li>本地 SSD 实例（如 AWS <code>i3en.24xlarge</code>）：提供 <strong>60 TB 本地 SSD 存储</strong>。</li>
+<li>数据密集型 HDD 实例（如 AWS <code>d3en.12xlarge</code>）：提供 <strong>336 TB HDD 存储</strong>。</li>
+<li>对象存储（如 Amazon S3）：容量无限，处理 PB 级部署已成为行业标准，存储空间不再是核心瓶颈。</li>
+</ul>
+</li>
+<li><strong>网络性能与延迟：</strong> <ul>
+<li>数据中心内部：标准带宽为 <strong>10 Gbps</strong>，高性能实例可达 <strong>20 Gbps</strong> 至 <strong>25 Gbps</strong>。</li>
+<li>跨区域带宽：通常在 <strong>100 Mbps 至 1 Gbps</strong> 之间。</li>
+<li>网络延迟：同区域内（In-region）延迟维持在 <strong>1-2ms</strong>；跨区域（Cross-region）延迟为 <strong>50-150ms</strong>。</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h2>3. 关键组件性能参数与扩展触发条件</h2>
+<h3>3.1 缓存 (Caching)</h3>
+<p>内存缓存实例在容量与处理能力上呈指数级增长。单实例缓存现已能处理 TB 级的作业数据集，具备单位数毫秒级别的延迟以及数十万 TPS 的并发能力。</p>
+<ul>
+<li><strong>核心参数：</strong><ul>
+<li><strong>内存容量：</strong> 内存优化型实例最高可达 <strong>1 TB</strong>（特定定制配置可更高）。</li>
+<li><strong>读取延迟：</strong> 同区域内 <strong>&lt; 1ms</strong>。</li>
+<li><strong>写入延迟：</strong> 优化系统的跨区域平均延迟为 <strong>1-2ms</strong>。</li>
+<li><strong>吞吐量：</strong> 基于现代 Graviton 节点的 ElastiCache Redis 等内存缓存，单实例读取吞吐量 <strong>&gt; 10万 次请求/秒</strong>；写入吞吐量可维持在数十万次请求/秒。</li>
+</ul>
+</li>
+<li><strong>何时考虑切分/分片 (Sharding Triggers)：</strong><ul>
+<li>数据集大小接近 <strong>1 TB</strong>。</li>
+<li>持续吞吐量超过 <strong>10万 次操作/秒</strong>。</li>
+<li>读取延迟一致性要求低于 <strong>0.5ms</strong>（若持续超出则需切分）。</li>
+<li>缓存命中率低于 <strong>80%</strong>，或内存使用率超过 <strong>80%</strong>，或出现严重的缓存抖动（Cache churn/thrashing）。</li>
+</ul>
+</li>
+<li><strong>架构策略与工程考量：</strong><ul>
+<li>“全量缓存”（Cache Everything）策略：将数百 GB 的完整数据库直接缓存于内存中，其成本通常低于开发复杂局部缓存逻辑的人力成本。</li>
+<li><strong>大实例隐患：</strong> 内存达到 TB 级的 Redis 实例在备份、主从复制或故障恢复时难度极大；此外，由于 Redis 的单线程特性，CPU 容易先于内存成为瓶颈（需结合 Snowflake/Dragonfly 等多线程方案或通过分片提高 CPU 利用率）。</li>
+</ul>
+</li>
+</ul>
+<h3>3.2 数据库 (Databases)</h3>
+<p>现代单节点关系型数据库（如 PostgreSQL、MySQL、RDS、Aurora）的性能足以满足绝大多数中大型应用的需求。</p>
+<ul>
+<li><strong>核心参数：</strong><ul>
+<li><strong>存储容量：</strong> 大多数数据库引擎单实例可支持最高 <strong>64 TiB</strong>（AWS Aurora 在特定配置下支持 <strong>128 TiB</strong>）。</li>
+<li><strong>读取延迟：</strong> 缓存数据为 <strong>1-5ms</strong>；磁盘查询（RDS/Aurora 优化配置）为 <strong>5-30ms</strong>。</li>
+<li><strong>写入延迟：</strong> 单节点高性能配置的提交延迟为 <strong>5-15ms</strong>。</li>
+<li><strong>吞吐量：</strong> 单节点 RDS/Aurora 的读取吞吐量最高达 <strong>5万 TPS</strong>；写入吞吐量为 <strong>1万 - 2万 TPS</strong>。</li>
+<li><strong>并发连接：</strong> 支持 <strong>5,000 - 20,000</strong> 个并发连接。</li>
+</ul>
+</li>
+<li><strong>何时考虑切分/分片 (Sharding Triggers)：</strong><ul>
+<li>数据集大小接近或超过 <strong>50 TiB</strong>。</li>
+<li>写入吞吐量持续超过 <strong>1万 TPS</strong>。</li>
+<li>未缓存数据的读取延迟要求低于 <strong>5ms</strong>。</li>
+<li>存在跨区域复制或地理分布需求。</li>
+<li>备份与恢复窗口过长（拉长至数小时），在运维上不再可行。</li>
+</ul>
+</li>
+</ul>
+<h3>3.3 应用服务器 (Application Servers)</h3>
+<p>现代应用服务器已摆脱传统连接数和内存的限制，CPU 计算资源（而非内存或连接数）通常是第一瓶颈。</p>
+<ul>
+<li><strong>核心参数：</strong><ul>
+<li><strong>并发连接：</strong> 优化配置下单实例可支持 <strong>10万+</strong> 并发连接。</li>
+<li><strong>CPU 规格：</strong> 8 - 64 核（主频 2-4 GHz）。</li>
+<li><strong>内存规格：</strong> 标准配置为 64 - 512 GB，高内存实例可达 <strong>2 TB</strong>。</li>
+<li><strong>网络带宽：</strong> 最高可达 <strong>25 Gbps</strong>。</li>
+<li><strong>启动时间：</strong> 容器化应用通常为 <strong>30-60 秒</strong>。</li>
+</ul>
+</li>
+<li><strong>何时考虑扩展 (Scaling Triggers)：</strong><ul>
+<li>CPU 利用率持续超过 <strong>70% - 80%</strong>。</li>
+<li>内存使用率持续超过 <strong>70% - 80%</strong>。</li>
+<li>响应延迟超过 SLA 或关键阈值。</li>
+<li>网络带宽接近 <strong>20 Gbps</strong>，或单实例连接数接近 <strong>10万</strong>。</li>
+</ul>
+</li>
+</ul>
+<h3>3.4 消息队列 (Message Queues)</h3>
+<p>以 Kafka 为代表的现代消息队列兼具极高的吞吐性能与持久化存储能力，其角色已从异步任务分发扩展为高性能数据主干道。</p>
+<ul>
+<li><strong>核心参数：</strong><ul>
+<li><strong>吞吐量：</strong> 现代配置下单 Broker 最高可达 <strong>100万 消息/秒</strong>。</li>
+<li><strong>延迟：</strong> 同区域端到端延迟为 <strong>1-5ms</strong>。</li>
+<li><strong>消息体大小：</strong> 可高效处理 <strong>1 KB 至 10 MB</strong> 的消息。</li>
+<li><strong>存储容量：</strong> 高级配置下单 Broker 可达 <strong>50 TB</strong>。</li>
+<li><strong>数据保留：</strong> 可保留数周至数月。</li>
+</ul>
+</li>
+<li><strong>何时考虑切分/扩展 (Scaling Triggers)：</strong><ul>
+<li>单 Broker 吞吐量接近 <strong>80万 消息/秒</strong>。</li>
+<li>集群分区（Partition）总数接近 <strong>20万</strong>。</li>
+<li>消费者滞后（Consumer Lag）持续增长，影响实时处理。</li>
+<li>需要跨区域冗余复制。</li>
+</ul>
+</li>
+<li><strong>同步架构应用：</strong> 得益于低于 5ms 的一致端到端延迟，消息队列可直接用于<strong>同步请求流</strong>中（例如 RabbitMQ 的 RPC 阻塞调用），在无需将 API 改造为异步模式的前提下，获得可靠交付与系统解耦的优势。</li>
+</ul>
+<hr>
+<h2>4. 组件性能与扩展指标对照表 (Cheat Sheet)</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">组件类型</th>
+<th align="left">核心性能指标 (Scale)</th>
+<th align="left">扩展/切分触发条件 (Triggers)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>缓存 (Caching)</strong></td>
+<td align="left">• 延迟：~1 ms<br>• 吞吐量：10万+ 操作/秒<br>• 内存上限：可达 1 TB（受限于内存容量）</td>
+<td align="left">• 内存使用率 &gt; 80%<br>• 命中率 &lt; 80%<br>• 延迟 &gt; 1 ms<br>• 出现缓存频繁抖动/淘汰</td>
+</tr>
+<tr>
+<td align="left"><strong>数据库 (Databases)</strong></td>
+<td align="left">• 吞吐量：最高 5万 交易/秒 (TPS)<br>• 延迟：读取（缓存）&lt; 5ms<br>• 存储容量：单实例 64 TiB+</td>
+<td align="left">• 写入吞吐量 &gt; 1万 TPS<br>• 未缓存读取延迟 &gt; 5ms<br>• 数据量接近/超过 50 TiB<br>• 存在地理分布及备份窗口受限需求</td>
+</tr>
+<tr>
+<td align="left"><strong>应用服务器 (App Servers)</strong></td>
+<td align="left">• 连接数：单实例 10万+ 并发连接<br>• 算力：8-64 核 (2-4 GHz)<br>• 内存：标准 64-512GB，最高 2TB</td>
+<td align="left">• CPU 利用率 &gt; 70%<br>• 内存使用率 &gt; 80%<br>• 响应延迟突破 SLA<br>• 单实例连接数接近 10万 / 带宽接近 20 Gbps</td>
+</tr>
+<tr>
+<td align="left"><strong>消息队列 (Message Queues)</strong></td>
+<td align="left">• 吞吐量：单 Broker 最高 100万 消息/秒<br>• 延迟：端到端 &lt; 5ms<br>• 存储：单 Broker 最高 50TB</td>
+<td align="left">• 单 Broker 吞吐量接近 80万 消息/秒<br>• 集群分区数接近 20万 个<br>• 消费者滞后持续增加</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2>5. 面试常见误区与算术验证案例</h2>
+<h3>误区一：过早切分 (Premature Sharding)</h3>
+<p>候选人常在数据量极小的情况下盲目设计数据库或缓存切分方案。</p>
+<ul>
+<li><strong>案例 1：Yelp 商家数据库设计</strong><ul>
+<li>数据计算：假设有 1,000万（10M）家商家，每家商家数据约 1 KB。</li>
+<li>总量：$10\text{M} \times 1\text{ KB} = 10\text{ GB}$。</li>
+<li>即使将评论数据放于同一数据库并放大 10 倍，总数据量也仅为 <strong>100 GB</strong>。</li>
+<li>结论：100 GB 数据完全可置于单个数据库中，无需任何分片。</li>
+</ul>
+</li>
+<li><strong>案例 2：LeetCode 排行榜缓存</strong><ul>
+<li>数据计算：假设有 10万（100k）场比赛，每场比赛有 10万（100k）名用户。</li>
+<li>单条记录大小：36 字节（ID）+ 4 字节（Float 分数）= 40 字节。</li>
+<li>总量：$100\text{k} \times 100\text{k} \times 40\text{ bytes} = 400\text{ GB}$。</li>
+<li>结论：400 GB 完全可以塞入单台高性能大内存缓存服务器中，无需分布式缓存分片。</li>
+</ul>
+</li>
+</ul>
+<h3>误区二：高估磁盘/SSD 延迟 (Overestimating Latency)</h3>
+<ul>
+<li><strong>分析：</strong> 候选人常高估 SSD 查询延迟。对于带有索引的简单主键或行查找（Row lookup），SSD 的响应时间仅在 <strong>10ms</strong> 左右。</li>
+<li><strong>结论：</strong> 如果仅是简单索引行查找，现有的数据库已足够快，无需为了降低延迟而额外引入缓存层（增加架构复杂度）。缓存应优先留给计算昂贵的复杂查询。</li>
+</ul>
+<h3>误区三：高写入吞吐下的过度设计 (Over-engineering for High Write Throughput)</h3>
+<ul>
+<li><strong>分析：</strong> 面对 5,000 WPS（写入/秒）的系统，候选人常急于引入消息队列来做缓冲。</li>
+<li><strong>数据对比：</strong> 一个经过良好调优的 PostgreSQL 实例，在处理简单写入时轻松支持 <strong>2万+ WPS</strong>。</li>
+<li><strong>瓶颈根源：</strong> 真正限制数据库写入能力的不是纯写入量，而是：跨多表的复杂事务、过多索引导致的写入放大（Write Amplification）、触发昂贵级联更新的写入，以及高并发读取对写入资源的竞争。</li>
+<li><strong>结论：</strong> 在 5k WPS 的简单插入场景下无需引入消息队列。在考虑消息队列前，应优先选择更简单的优化手段：批量写入（Batch writes）、优化 Schema 与索引、使用连接池（Connection pooling）、或非关键写入的异步提交。</li>
+</ul>
+<hr>
+<h2>6. 重要引用与语境解读 (Key Quotes &amp; Context)</h2>
+<blockquote>
+<p><strong>引用 1：关于旧参数对架构决策的误导</strong>
+<em>&quot;One of the biggest giveaways that a candidate has book knowledge but no hands-on experience during a system design interview is when they rely on outdated hardware constraints. They do scale calculations using numbers from 2015 (or even 2020!) that dramatically underestimate what modern systems can handle.&quot;</em>
+<strong>语境解读：</strong> 面试官识别“只有书本知识而缺乏实战经验”候选人的标志，就是看其是否在使用 2015/2020 年的旧数据计算规模。这会导致严重低估现代硬件的能力，从而设计出不必要的复杂架构。</p>
+</blockquote>
+<blockquote>
+<p><strong>引用 2：关于“全量缓存”的成本效益</strong>
+<em>&quot;This &#39;cache everything&#39; approach, while seemingly brute force, typically costs less than engineering time spent on selective caching logic. When you do need to scale, the bottleneck is usually operations per second or network bandwidth, not memory size...&quot;</em>
+<strong>语境解读：</strong> 直接采购大内存实例将全量数据写入缓存，表面上看是“暴力破解”，但从经济学角度看，其硬件成本远低于工程师编写和维护复杂局部缓存逻辑的人力成本。</p>
+</blockquote>
+<blockquote>
+<p><strong>引用 3：关于面试中盲目 Scaling 的警示</strong>
+<em>&quot;Slow down, do the math, and make sure sharding is actually needed before you start explaining how you&#39;d do it.&quot;</em>
+<strong>语境解读：</strong> 针对候选人在面对仅数百 GB 或数 TB 数据就急于解释切分算法的现象，强调在给出复杂方案前，必须先进行数据数学计算，证明切分的必要性。</p>
+</blockquote>
+<blockquote>
+<p><strong>引用 4：关于大内存 Redis 的运维约束（社区专家讨论）</strong>
+<em>&quot;No strict rule here, but large instances become harder to back up, replicate, or recover from failures... Also remember for Redis specifically that it&#39;s single-threaded! You&#39;ll probably be CPU-bound first.&quot;</em>
+<strong>语境解读：</strong> 针对“为何 Redis 在 24TB 内存时代仍建议在 1TB 左右考虑切分”的提问，专家 Evan King 与 Stefan Mai 指出：限制 Redis 的不仅是内存大小，还有超大实例在灾难恢复/主从同步时的巨大运维风险，以及单线程架构导致的 CPU 瓶颈。</p>
+</blockquote>
+<hr>
+<h2>7. 可操作的架构洞察与建议 (Actionable Insights)</h2>
+<ol>
+<li><strong>先做数学计算，再谈架构扩展：</strong> 在讨论任何分片（Sharding）或分布式扩展之前，务必计算总数据量与 TPS。只要数据量在数十 TB 以内、写入在 1万-2万 TPS 以内，优先考虑单机数据库配合垂直扩展。</li>
+<li><strong>充分利用应用服务器本地内存：</strong> 应用服务器的 CPU 往往先于内存达到瓶颈。不要防范使用内存，可利用大内存进行本地缓存（Local Caching）、内存计算和会话管理，以大幅度提升性能。</li>
+<li><strong>重新评估消息队列的使用场景：</strong> 基于现代 MQ 低于 5ms 的端到端延迟，消息队列不仅能用于异步解耦和削峰，还可以安全地置于同步 API 请求流中提供高可靠交付。</li>
+<li><strong>定位真正的系统瓶颈：</strong><ul>
+<li>应用服务器的第一瓶颈通常是 <strong>CPU</strong>。</li>
+<li>缓存系统的第一瓶颈通常是 <strong>Ops/sec（操作数）</strong> 或 <strong>网络带宽</strong>，而非内存容量。</li>
+<li>数据库写入瓶颈通常是 <strong>复杂事务与索引放大</strong>，而非纯粹的行插入量。</li>
+</ul>
+</li>
+</ol>
+</article></main></body></html>

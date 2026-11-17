@@ -1,0 +1,251 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dealing with Contention · Summary</title><link rel="stylesheet" href="../../../Study%20topics/style.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script><style>article{background:#fff;border:1px solid #dce4ea;border-radius:12px;padding:8px 24px 20px}article h1{font-size:26px}article table{margin:10px 0}article li{margin:4px 0}@media(max-width:600px){article{padding:4px 14px 14px}}</style></head><body><main><p class="muted">System Design · Patterns · <a href="../../../Reports/AI_ENGINEER_TRANSITION_PLAN.html#day-10">Day 10 读</a> · <a href="https://www.hellointerview.com/learn/system-design/patterns/dealing-with-contention">网页</a> · <a href="../../Hello_Interview_System_Design/HTML/041%20Dealing%20with%20Contention%20Pattern%20for%20System%20Design%20Interviews%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a> · <a href="obsidian://open?vault=JuJu_Workspace&amp;file=02_Knowledge%2FProgramming%2Fsystem_design%2FDealing%20with%20Contention%20Pattern">在 Obsidian 里打开</a></p><article><h1>Dealing with Contention Pattern</h1>
+<h2>2026-11-16 · Dealing with Contention Pattern</h2>
+<p>来源：<a href="../../Hello_Interview_System_Design/HTML/041%20Dealing%20with%20Contention%20Pattern%20for%20System%20Design%20Interviews%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a></p>
+<p>NotebookLM 报告：<a href="https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f">https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f</a></p>
+<h1>简报：系统设计面试中的资源竞争处理模式</h1>
+<h2>执行摘要 (Executive Summary)</h2>
+<p>在系统设计面试中，<strong>资源竞争（Contention）</strong> 是评估候选人处理高并发与数据一致性能力的核心场景。当多个进程同时争用同一资源（如抢购最后一张演唱会门票、拍卖竞价、扣减库存或账户划转）时，若缺乏恰当的协调机制，系统极易引发竞态条件（Race Conditions）、重复预订（Double-booking）以及数据不一致。</p>
+<p>解决资源竞争的演进路径遵循<strong>从简到繁</strong>的自然顺序：</p>
+<ol>
+<li><strong>单节点数据库解法</strong>：优先利用数据库事务的原子性（Atomicity）、显式悲观锁（Pessimistic Locking，如 <code>FOR UPDATE</code>）、可串行化隔离级别（SERIALIZABLE Isolation）或乐观并发控制（Optimistic Concurrency Control, OCC）。</li>
+<li><strong>多节点分布式协调解法</strong>：在跨数据库/分片场景下，采用两阶段提交（2PC）、分布式锁（Redis/数据库/ZooKeeper/etcd）或 Saga 模式（基于补偿机制的最终一致性）。</li>
+</ol>
+<p><strong>核心结论</strong>：极力建议在设计中将竞争数据保留在单个数据库内，通过垂直扩展与单库机制处理争用。分布式协调带有极高的复杂度和性能开销，仅应在无法避免跨系统架构时作为最后手段使用。</p>
+<hr>
+<h2>关键主题深入分析 (Detailed Analysis of Key Themes)</h2>
+<h3>1. 资源竞争与竞态条件的根源 (The Problem &amp; Race Condition)</h3>
+<ul>
+<li><strong>产生机制</strong>：读取（Read）与写入（Write）操作缺乏<strong>原子性（Atomicity）</strong>。在“检查当前状态”和“基于该状态进行更新”之间存在时间差（微秒或毫秒级），外部状态在此窗口期内发生改变。</li>
+<li><strong>经典案例</strong>：演唱会剩余 1 张门票。用户 Alice 和 Bob 同时点击购买：<ul>
+<li>Alice 和 Bob 的请求同时读取到“剩余 1 张门票”。</li>
+<li>Alice 的逻辑检查 $1 \ge 1$，成功扣减库存至 0 并扣款 $500。</li>
+<li>Bob 的逻辑基于旧数据同样检查 $1 \ge 1$，成功扣减库存至 -1 并扣款 $500。</li>
+<li>系统向两人发出了同一座位（如 Row 5, Seat 12）的确认邮件，导致重复售票与退款纷争。</li>
+</ul>
+</li>
+<li><strong>规模效应</strong>：并发量扩大（如 10,000 并发用户）会急剧放大竞态条件窗口，且跨节点协调进一步增加了复杂性。</li>
+</ul>
+<hr>
+<h3>2. 单节点解决方案 (Single Node Solutions)</h3>
+<p>当所有数据存储于单个数据库时，可通过以下手段解决竞争：</p>
+<h4>(1) 原子性与事务 (Atomicity &amp; Transactions)</h4>
+<ul>
+<li><strong>概念</strong>：一组数据库操作要么全部成功，要么全部失败（全有或全无）。SQL 数据库（ACID）以及部分 NoSQL（如 MongoDB 多文档事务、DynamoDB 事务操作、CockroachDB 分布式 ACID）均支持事务。</li>
+<li><strong>局限</strong>：事务仅保证自身内部操作的原子性，<strong>无法阻止其他事务并发读取相同的数据</strong>。如果 Alice 和 Bob 的事务同时读取 <code>available_seats = 1</code>，即使各自包含更新与插入记录操作，仍会发生超卖。</li>
+</ul>
+<h4>(2) 悲观锁 (Pessimistic Locking)</h4>
+<ul>
+<li><strong>机制</strong>：假设冲突必定发生，在读取时即通过 <code>SELECT ... FOR UPDATE</code> 显式锁定指定行。</li>
+<li><strong>效果</strong>：当 Alice 执行锁定查询时，Bob 的相同事务将在 <code>SELECT</code> 处被阻塞，直至 Alice 的事务完成提交（COMMIT）或回滚（ROLLBACK）。</li>
+<li><strong>性能要点</strong>：必须遵循“锁定最少的行、持锁时间尽可能短”的原则。锁定整张表会破坏并发性能，长时间持锁会制造系统瓶颈。</li>
+</ul>
+<h4>(3) 隔离级别 (Isolation Levels)</h4>
+<ul>
+<li>四种标准隔离级别：<code>READ UNCOMMITTED</code>（未提交读）、<code>READ COMMITTED</code>（已提交读）、<code>REPEATABLE READ</code>（可重复读）、<code>SERIALIZABLE</code>（可串行化）。</li>
+<li><strong>SERIALIZABLE</strong>：强行使事务像串行一样逐个执行，数据库自动检测冲突并中断（Abort）产生冲突的事务，被中断事务需重试。</li>
+<li><strong>权衡</strong>：相比显式锁，<code>SERIALIZABLE</code> 性能开销更大，因为数据库需跟踪所有读写以检测冲突，且事务中断会导致重复劳动。显式悲观锁在已知具体资源争用时更高效。</li>
+</ul>
+<h4>(4) 乐观并发控制 (Optimistic Concurrency Control, OCC)</h4>
+<ul>
+<li><strong>机制</strong>：假设冲突很少发生。在更新时不加锁，而是在更新条件中比对<strong>版本号（Version）<strong>或</strong>数据固有变化值</strong>。</li>
+<li><strong>无显式版本列的实现</strong>：直接使用被修改的数据本身（如 <code>available_seats</code>）。<pre><code class="language-sql">UPDATE concerts 
+SET available_seats = available_seats - 1
+WHERE concert_id = &#39;weeknd_tour&#39; AND available_seats = 1; -- 预期读到的原值
+</code></pre>
+若更新影响行数为 0，说明数据已被他人修改，当前事务回滚并提示“已售罄”或触发重试。</li>
+<li><strong>适用场景</strong>：适用于低冲突、高读写比的场景（如大多数电商购物）。</li>
+</ul>
+<hr>
+<h3>3. 多节点分布式协调 (Multiple Nodes Solutions)</h3>
+<p>当数据分布在多个数据库（如分片库、跨行划转数据库 A 与数据库 B）时，单库事务失效，需采用分布式协调。</p>
+<h4>(1) 两阶段提交 (Two-Phase Commit, 2PC)</h4>
+<ul>
+<li><strong>角色与流程</strong>：协调者服务（Coordinator）管理多个参与者数据库（Participants）。<ul>
+<li><strong>准备阶段（Prepare Phase）</strong>：协调者询问各数据库。数据库 A 开启事务、冻结资金、检查余额但不提交；数据库 B 开启事务、验证账户但不提交。</li>
+<li><strong>提交阶段（Commit Phase）</strong>：若所有参与者均准备成功，协调者指示全部提交；任意失败则全部回滚。</li>
+</ul>
+</li>
+<li><strong>致命风险</strong>：<ul>
+<li><strong>协调者必须记录持久化日志（Persistent Log）</strong>。若协调者崩溃且无日志，参与者将处于悬挂锁定状态。</li>
+<li>跨网络保持长事务锁非常危险，可能导致账户被无限期锁定。设置 30-60 秒超时虽可自动回滚，但可能误杀正常慢操作。</li>
+</ul>
+</li>
+</ul>
+<h4>(2) 分布式锁与临时预订 (Distributed Locks &amp; Reservations)</h4>
+<p>通过外部锁机制保证全系统同一时间仅有一道工序能操作特定资源：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">实现技术</th>
+<th align="left">机制与优势</th>
+<th align="left">劣势/风险</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>Redis (带有 TTL)</strong></td>
+<td align="left">利用 <code>SET</code> 命令结合自动过期时间（TTL）实现原子加锁；速度极快，无需清理任务。</td>
+<td align="left">Redis 可能成为单点故障；需处理 Redis 不可用情况。</td>
+</tr>
+<tr>
+<td align="left"><strong>数据库列 (Status/Expires)</strong></td>
+<td align="left">在已有数据库中增加状态与过期时间字段，利用 ACID 保证原子性。</td>
+<td align="left">性能低于缓存；需定期运行后台清理作业处理过期锁。</td>
+</tr>
+<tr>
+<td align="left"><strong>ZooKeeper / etcd</strong></td>
+<td align="left">专门的分布式协调服务。ZooKeeper 使用临时节点（Ephemeral Nodes）在客户端断开时自动释放锁；采用 Raft 或 ZAB 共识算法。</td>
+<td align="left">强一致性与高容错性，但带来了额外的运维复杂性。</td>
+</tr>
+</tbody></table></div>
+<ul>
+<li><strong>业务层面的应用（临时预订模式）</strong>：<ul>
+<li>将争用窗口从“整个支付流程（数分钟）”缩短至“预订步骤（毫秒级）”。</li>
+<li><strong>案例</strong>：Ticketmaster 选座时将座位置为 <code>reserved</code>（带超时）；Uber 将司机状态设为 <code>pending_request</code>；电商购物车置为 <code>on hold</code>。</li>
+</ul>
+</li>
+</ul>
+<h4>(3) Saga 模式 (Saga Pattern)</h4>
+<ul>
+<li><strong>机制</strong>：放弃跨系统强原子性，将大操作拆分为一系列<strong>独立的本地事务</strong>，按顺序执行并立即提交。如果某一步失败，反向执行**补偿事务（Compensating Transactions）**进行撤销。</li>
+<li><strong>案例（跨行转账）</strong>：<ul>
+<li>步骤 1：扣减 Alice 账户余额 $100，立即提交。</li>
+<li>步骤 2：增加 Bob 账户余额 $100，立即提交。</li>
+<li>若步骤 2 失败（如 Bob 账户不存在），触发步骤 1 的补偿事务：为 Alice 账户重新加上 $100。</li>
+</ul>
+</li>
+<li><strong>权衡</strong>：系统在 Saga 执行期间处于**临时不一致（最终一致性）**状态。应用需能识别中间状态（如标记转账为 <code>pending</code>）。</li>
+</ul>
+<hr>
+<h3>4. 技术方案对比选择矩阵 (Decision Matrix)</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">方案模式</th>
+<th align="left">适用场景</th>
+<th align="left">避免使用场景</th>
+<th align="left">典型延迟</th>
+<th align="left">复杂度</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>悲观锁 (Pessimistic Locking)</strong></td>
+<td align="left">高争用、关键一致性、单数据库</td>
+<td align="left">低争用、高吞吐量需求</td>
+<td align="left">低 (单库查询)</td>
+<td align="left">低</td>
+</tr>
+<tr>
+<td align="left"><strong>SERIALIZABLE 隔离级别</strong></td>
+<td align="left">需自动检测冲突、无法确定具体锁</td>
+<td align="left">性能极度敏感、高争用</td>
+<td align="left">中 (检测开销)</td>
+<td align="left">低</td>
+</tr>
+<tr>
+<td align="left"><strong>乐观并发控制 (OCC)</strong></td>
+<td align="left">低争用、高读写比、性能敏感</td>
+<td align="left">高争用、无法忍受重试的场景</td>
+<td align="left">低 (无冲突时)</td>
+<td align="left">中</td>
+</tr>
+<tr>
+<td align="left"><strong>分布式事务 (2PC / Saga)</strong></td>
+<td align="left">必须跨系统保持原子性、可容忍复杂度</td>
+<td align="left">高可用性要求极高、性能敏感</td>
+<td align="left">高 (网络协调)</td>
+<td align="left">极高</td>
+</tr>
+<tr>
+<td align="left"><strong>分布式锁 (Distributed Locks)</strong></td>
+<td align="left">用户端流程、需临时预订、比 2PC 简单</td>
+<td align="left">纯技术协调且存在更简单替代方案</td>
+<td align="left">低 (简单状态更新)</td>
+<td align="left">中</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h3>5. 深入解析与边界问题 (Deep Dives)</h3>
+<h4>(1) 如何防止悲观锁死锁 (Deadlocks)？</h4>
+<ul>
+<li><strong>问题</strong>：Alice 向 Bob 转账（锁 Alice 账户再锁 Bob 账户），同时 Bob 向 Alice 转账（锁 Bob 账户再锁 Alice 账户），形成循环等待。</li>
+<li><strong>解决方案</strong>：<strong>顺序加锁（Ordered Locking）</strong>。强制所有事务按照某种确定的键（如用户 ID 升序排序）进行加锁。无论业务逻辑谁发起，均先锁 ID 较小者，彻底杜绝循环等待。</li>
+<li><strong>兜底机制</strong>：配置数据库事务超时（Transaction Timeouts）与自动死锁检测。</li>
+</ul>
+<h4>(2) 乐观并发控制中的 ABA 问题机制与解决</h4>
+<ul>
+<li><strong>问题</strong>：数据从状态 A 变成 B，又变回 A。乐观锁检查发现当前仍为 A，误以为期间未发生改变。</li>
+<li><strong>案例（Yelp 商家评分）</strong>：某餐厅原本 4.0 星、100 条评价。两条新评价同时提交（一好评一差评），计算后均得出新的平均分仍为 4.0 星。若仅以“平均分 4.0”作为版本校验，两次更新均会成功，但评价总数却漏计了一次。</li>
+<li><strong>解决方案</strong>：使用<strong>单调递增的列</strong>（如评价总数 <code>review_count</code>，或显式的自增 <code>version</code> 字段）作为版本依据。<pre><code class="language-sql">UPDATE restaurants 
+SET avg_rating = 4.1, review_count = review_count + 1
+WHERE restaurant_id = &#39;pizza_palace&#39; AND review_count = 100;
+</code></pre>
+</li>
+</ul>
+<h4>(3) 针对单一热点资源（Hot Partition / Celebrity Problem）的极限优化</h4>
+<ul>
+<li><strong>现象</strong>：名人发布动态引发数百万点赞、泰勒·斯威夫特演唱会门票瞬间抢购。分片、负载均衡和读副本在写热点面前均失效。</li>
+<li><strong>解决思路</strong>：<ol>
+<li><strong>改变业务问题</strong>：把单件拍品拆分为 10 件相同拍品独立竞价；将社交点赞改为最终一致性。</li>
+<li><strong>基于队列的串行化（Queue-Based Serialization）</strong>：将针对该热点资源的所有写请求压入专用队列，由**单一工作线程（Single Worker Thread）**顺序处理。这消除了并发争用，以牺牲延迟为代价换取系统的绝对稳定性。</li>
+<li><strong>计数器拆分（Counter Splitting）</strong>：将单一计数器拆分为 10 个独立子计数器（按用户 ID 哈希取模更新），读取时汇总求和，分散写压力。</li>
+</ol>
+</li>
+</ul>
+<hr>
+<h2>重要引用与背景 (Important Quotes with Context)</h2>
+<blockquote>
+<p><strong>引用 1</strong>：&quot;This race condition occurs because reading and writing aren&#39;t atomic. There&#39;s a gap between &#39;check the current state&#39; and &#39;update based on that state&#39; where the world can change.&quot;</p>
+<p><strong>背景分析</strong>：本句揭示了所有资源争用与竞态条件的根本原因。许多初学者误以为简单的数据库查询加上后续更新就是安全的，忽略了网络和内存中那几毫秒的时间空隙，这正是导致超卖或双重支付的逻辑漏洞所在。</p>
+</blockquote>
+<blockquote>
+<p><strong>引用 2</strong>：&quot;Nine times out of ten, this is entirely possible and avoids the need for distributed coordination, which can get ugly fast.&quot;</p>
+<p><strong>背景分析</strong>：作者在此强调架构设计的实用主义理念。现代单体数据库（如 PostgreSQL）能承受数千并发连接与数十 TB 数据。面试者常常过早引入分布式事务或分布式锁，导致架构变得极其臃肿脆弱。能在单库解决的，绝不要轻易跨库。</p>
+</blockquote>
+<blockquote>
+<p><strong>引用 3</strong>：&quot;Don&#39;t reach for complex coordination mechanisms when simpler solutions work... Keep in mind that adding new components adds system complexity and introduces new failure modes so do what you can to avoid them.&quot;</p>
+<p><strong>背景分析</strong>：针对系统设计面试中的常见误区警告。面试官极其看重架构的简洁性与组件引入的合理性。随意增加 Redis 或 ZooKeeper 来解决简单的数据库锁问题，不仅增加了系统运维复杂度，还制造了新的单点故障风险。</p>
+</blockquote>
+<blockquote>
+<p><strong>引用 4</strong>：&quot;The best system designers fight hard to keep their data together and choose the right coordination pattern for their specific consistency requirements.&quot;</p>
+<p><strong>背景分析</strong>：文章在结语部分总结的高级工程师思维模式：顶级设计师的价值不在于使用了多炫酷的分布式工具，而在于极力通过合理的数据建模将相关数据保持在一起，并根据具体的一致性需求选择最轻量恰当的协调模式。</p>
+</blockquote>
+<hr>
+<h2>可操作的面试策略与洞察 (Actionable Insights for Interviews)</h2>
+<h3>1. 信号识别：何时必须主动提出竞争模式？</h3>
+<p>在分析非功能性需求（Non-Functional Requirements）时，一旦发现系统需要<strong>强一致性（Strong Consistency）</strong>，或包含以下特征，应立即主动提出竞争处理机制：</p>
+<ul>
+<li>多用户竞争有限资源（演唱会门票、拍品竞价、秒杀库存、抢单派单）。</li>
+<li>防重复预订/防重复扣款（支付结算、座位预订、会议室预约）。</li>
+<li>高并发下的共享账户更新（账户余额、库存管理）。</li>
+<li>分布式环境下的顺序敏感型操作。</li>
+</ul>
+<h3>2. 常见面试场景应对套路</h3>
+<ul>
+<li><strong>在线拍卖系统 (Online Auctions)</strong>：<ul>
+<li>推荐：乐观并发控制（OCC）。以“当前最高出价”作为版本校验标准，仅当新出价高于预期最高出价时才接受更新。</li>
+</ul>
+</li>
+<li><strong>Ticketmaster / 票务预订</strong>：<ul>
+<li>推荐：分布式锁 + 业务层临时预订（Reservations）。选座时即锁定座位 10 分钟并自动过期，将争用窗口收窄至选座瞬间，大幅提升用户体验。</li>
+</ul>
+</li>
+<li><strong>银行/跨行转账系统</strong>：<ul>
+<li>推荐：优先选择 Saga 模式（基于最终一致性与补偿机制以保障高可用）；若面试官强行要求严格强一致性，再论述 2PC 方案及其持久化日志与超时机制。</li>
+</ul>
+</li>
+<li><strong>打车软件派单 (Ride Sharing)</strong>：<ul>
+<li>推荐：状态机预订机制。向司机发送订单时将状态置为 <code>pending_request</code>，结合带 TTL 的缓存（如 10 秒超时）自动清理超时无响应状态。</li>
+</ul>
+</li>
+<li><strong>Yelp / 商家点评评分</strong>：<ul>
+<li>推荐：乐观并发控制（OCC）。将 <code>review_count</code> 作为单调递增版本号，防止并发提交评论时平均分计算被覆盖。</li>
+</ul>
+</li>
+</ul>
+<h3>3. 面试表达金句参考（主动出击示例）</h3>
+<ul>
+<li><strong>关于竞价</strong>：&quot;This auction system will have multiple bidders competing for items, so I&#39;ll use optimistic concurrency control with the current high bid as my version check.&quot;</li>
+<li><strong>关于预订</strong>：&quot;For the ticketing system, I want to avoid users losing seats after filling out payment info, so I&#39;ll implement seat reservations with a 10-minute timeout.&quot;</li>
+<li><strong>关于分片划转</strong>：&quot;Since we&#39;re sharding user accounts across databases, transfers between different shards will need distributed transactions. I&#39;ll use the saga pattern for resilience.&quot;</li>
+</ul>
+</article></main></body></html>

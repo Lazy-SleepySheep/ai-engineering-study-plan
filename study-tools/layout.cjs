@@ -19,7 +19,7 @@ const MOVED = [
 ];
 const GUIDE = ['AI_ENGINEER_DAILY_LEARNING_GUIDE.md', 'AI_ENGINEER_DAILY_LEARNING_GUIDE.html'];
 const LINK = /(\]\(|href="|src="|href='|src=')([^)"'#\s][^)"'\s]*)/g;
-const external = t => /^(https?:|mailto:|data:|javascript:)/.test(t);
+const external = t => /^(https?:|mailto:|data:|javascript:|obsidian:)/.test(t);
 const rd = f => fs.readFileSync(path.join(root, f), 'utf8');
 const wr = (f, s) => { fs.mkdirSync(path.dirname(path.join(root, f)), { recursive: true }); fs.writeFileSync(path.join(root, f), s); };
 const rm = f => { try { fs.unlinkSync(path.join(root, f)); } catch (e) { /* already gone */ } };

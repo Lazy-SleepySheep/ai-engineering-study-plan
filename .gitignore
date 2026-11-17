@@ -53,3 +53,14 @@ jobs/raw
 
 .study-venv/
 .claude/*.tmp.*
+
+# Hello Interview videos: local only
+resource/**/*.mp4
+# saved Hello Interview pages with the video embedded, over GitHub's 100 MB file limit: local only
+/resource/Hello_Interview_System_Design/HTML/022 Design a Local Business Review Site Like Yelp ｜ Hello Interview System Design in a Hurry.html
+/resource/Hello_Interview_System_Design/HTML/025 Design an Online Auction Platform Like eBay ｜ Hello Interview System Design in a Hurry.html
+/resource/Hello_Interview_System_Design/HTML/028 Design a Price Tracking Service like CamelCamelCamel ｜ Hello Interview System Design in a Hurry.html
+/resource/Hello_Interview_System_Design/HTML/029 Design a Photo Sharing App Like Instagram ｜ Hello Interview System Design in a Hurry.html
+/resource/Hello_Interview_System_Design/HTML/036 Design a Distributed Job Scheduler Like Airflow ｜ Hello Interview System Design in a Hurry.html
+/resource/Hello_Interview_System_Design/HTML/039 Design a Payment System like Stripe ｜ Hello Interview System Design in a Hurry.html
+/resource/Hello_Interview_System_Design/HTML/Design ChatGPT ｜ Hello Interview System Design in a Hurry.html

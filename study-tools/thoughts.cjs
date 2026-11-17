@@ -5,13 +5,21 @@
 // "Study notes/thoughts/index.json" lists the notes for the web version (GitHub Pages, read only), which cannot list a
 // folder. It is rebuilt from the .md files after every change and before every sync, so a note edited, renamed or
 // deleted by hand in the folder is picked up.
-const fs = require('fs'), path = require('path');
+// Images: pasting (Ctrl+V) or dropping an image in the box saves it as "Study notes/thoughts/images/<hash>.<ext>" and puts
+// ![图片](images/<hash>.<ext>) in the text, which the page (and GitHub) shows as the image. Deleting a note deletes the images
+// only it used.
+const fs = require('fs'), path = require('path'), crypto = require('crypto');
 
 const FILE = 'AI_ENGINEER_THOUGHTS.html', TITLE = '随想笔记';
 const DIR_REL = 'Study notes/thoughts', DIR = path.join(__dirname, '..', DIR_REL);
 const INDEX_REL = DIR_REL + '/index.json', INDEX = path.join(DIR, 'index.json');
 const PATH = /^Study notes\/thoughts\/(?:[^/]+\.md|index\.json)$/;      // the files the GitHub buttons sync
 const HEAD = /^## (\d{4}-\d{2}-\d{2} \d{2}:\d{2})[ \t]*$/;               // the heading above each thought
+const IMG_DIR = path.join(DIR, 'images');
+const IMAGE = /^Study notes\/thoughts\/images\/[0-9a-f]{12}\.(?:png|jpg|gif|webp)$/;   // pasted images, synced too
+const IMG_REF = /!\[[^\]\n]*\]\(images\/([0-9a-f]{12}\.(?:png|jpg|gif|webp))\)/g;
+const IMG_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+const MAX_IMAGE = 10 * 1024 * 1024;
 
 // ---- a note: "# <name>", then one "## YYYY-MM-DD HH:MM" section per thought, oldest first
 function parse(md) {
@@ -31,7 +39,7 @@ function info(name, md) {
   const { head, entries } = parse(md), ats = entries.map(e => e.at).sort();
   const last = entries.reduce((a, e) => (!a || e.at >= a.at ? e : a), null);
   const text = last ? last.text : head.replace(/^# .*(\n|$)/, '');
-  return { name, count: entries.length, created: ats[0] || '', updated: ats[ats.length - 1] || '', preview: text.replace(/\s+/g, ' ').trim().slice(0, 80) };
+  return { name, count: entries.length, created: ats[0] || '', updated: ats[ats.length - 1] || '', preview: text.replace(/!\[[^\]\n]*\]\([^)\n]*\)/g, '[图片]').replace(/\s+/g, ' ').trim().slice(0, 80) };
 }
 function names() { try { return fs.readdirSync(DIR).filter(f => f.endsWith('.md')).map(f => f.slice(0, -3)); } catch (e) { return []; } }
 const fileOf = n => path.join(DIR, n + '.md');
@@ -68,12 +76,43 @@ const find = n => names().find(x => x.toLowerCase() === n.toLowerCase());
 const p2 = n => String(n).padStart(2, '0');
 const stamp = (d = new Date()) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
 
+// an image pasted in the box: {data: 'data:image/png;base64,...'} -> images/<first 12 hex of its sha1>.<ext>; the same image
+// pasted twice is one file
+function saveImage(data) {
+  const m = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(data || ''));
+  if (!m) throw new Error('只能粘贴 PNG、JPEG、GIF 或 WebP 图片');
+  const buf = Buffer.from(m[2], 'base64'), hex = buf.subarray(0, 12).toString('hex');
+  if (buf.length > MAX_IMAGE) throw new Error('图片太大（最多 10 MB）');
+  const real = { 'image/png': /^89504e47/, 'image/jpeg': /^ffd8ff/, 'image/gif': /^474946/, 'image/webp': /^52494646.{8}57454250/ }[m[1]];
+  if (!real.test(hex)) throw new Error('这不是一张能读的图片');
+  const name = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 12) + '.' + IMG_TYPES[m[1]], f = path.join(IMG_DIR, name);
+  if (!fs.existsSync(f)) writeAtomic(f, buf);
+  return { ok: true, path: 'images/' + name };
+}
+const imagesIn = md => new Set([...String(md || '').matchAll(IMG_REF)].map(m => m[1]));
+// an image taken out of the box before Update (×): deleted unless a saved note uses it
+function dropImage(p) {
+  const m = /^images\/([0-9a-f]{12}\.(?:png|jpg|gif|webp))$/.exec(String(p || ''));
+  if (!m) throw new Error('bad image');
+  for (const n of names()) { try { if (imagesIn(fs.readFileSync(fileOf(n), 'utf8')).has(m[1])) return { ok: true, kept: true }; } catch (e) { /* removed meanwhile */ } }
+  try { fs.unlinkSync(path.join(IMG_DIR, m[1])); } catch (e) { /* already gone */ }
+  return { ok: true };
+}
+
 // POST /api/thoughts {action: 'update', name, text} adds the thought to the note, creating it | {action: 'delete', name}
+//                    | {action: 'image', data} saves a pasted image and returns its path relative to the notes
+//                    | {action: 'drop', path} deletes such an image again if no note uses it
 function handle(body) {
+  if (body.action === 'image') return saveImage(body.data);
+  if (body.action === 'drop') return dropImage(body.path);
   const action = body.action || 'update', name = cleanName(body.name), have = find(name);
   if (action === 'delete') {
     if (!have) throw new Error('找不到这篇笔记');
+    const gone = imagesIn(fs.readFileSync(fileOf(have), 'utf8'));
     fs.unlinkSync(fileOf(have));
+    // its images, unless another note uses them too
+    for (const n of names()) { try { for (const i of imagesIn(fs.readFileSync(fileOf(n), 'utf8'))) gone.delete(i); } catch (e) { /* removed meanwhile */ } }
+    for (const i of gone) { try { fs.unlinkSync(path.join(IMG_DIR, i)); } catch (e) { /* already gone */ } }
     writeIndex();
     return { ok: true, items: list(), message: '已删除「' + have + '」' };
   }
@@ -108,7 +147,7 @@ function merge(b, o, t) {
 // ---- the page
 const style = `<style>
 .th-grid{display:grid;grid-template-columns:minmax(220px,290px) minmax(0,1fr);gap:20px;align-items:start;margin-top:8px}
-.th-side{background:#fff;border:1px solid #dce4ea;border-radius:12px;padding:10px;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+.th-side{background:#fff;border:1px solid #dce4ea;border-radius:12px;padding:10px;position:sticky;top:calc(var(--bar-h,0px) + 12px);max-height:calc(100vh - var(--bar-h,0px) - 24px);overflow:auto}
 .th-side-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 4px 6px}
 .th-side ul{list-style:none;margin:0;padding:0}
 .th-item{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:none;border:0;border-radius:8px;padding:7px 10px;cursor:pointer}
@@ -137,6 +176,15 @@ const style = `<style>
 .th-entry:last-child{border-bottom:0}
 .th-at{font-size:12px;color:#5b6b78}
 .th-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65}
+a.th-imga{display:inline-block;max-width:100%;margin:4px 0;vertical-align:top}
+img.th-img{display:block;max-width:100%;max-height:480px;height:auto;border:1px solid #dce4ea;border-radius:6px;background:#fff}
+.th-shots{display:flex;flex-wrap:wrap;gap:8px}
+.th-shots:empty{display:none}
+.th-shot{position:relative;display:block;width:96px;height:72px;border:1px solid #c9d6de;border-radius:6px;overflow:hidden;background:#f5f7fa}
+.th-shot a{display:block;width:100%;height:100%}
+.th-shot img{width:100%;height:100%;object-fit:cover;display:block}
+.th-shot button{position:absolute;top:2px;right:2px;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:rgba(16,45,62,.75);color:#fff;font:14px/20px system-ui,sans-serif;cursor:pointer}
+.th-form textarea.th-drop{border-color:var(--accent);box-shadow:0 0 0 3px rgba(20,110,120,.18)}
 @media(max-width:760px){
  .th-grid{grid-template-columns:minmax(0,1fr)}
  .th-side{position:static;max-height:none;order:2}
@@ -199,6 +247,21 @@ function client() {
     function trim(a) { return a.join('\n').replace(/^\s*\n/, '').replace(/\s+$/, '').replace(/^\\(## \d{4}-)/gm, '$1'); }
     return { head: trim(head).replace(/^# .*(\n|$)/, '').replace(/^\s*\n/, ''), entries: entries.map(function (e) { return { at: e.at, text: trim(e.lines) }; }) };
   }
+  // ![alt](images/x.png) shows the image (a pasted one, next to the note; or one on the web); the rest as text with links
+  var BASE = '../Study%20notes/thoughts/', IMG = /!\[([^\]\n]*)\]\(((?:images\/[\w.-]+)|(?:https:\/\/[^\s)]+))\)/g;
+  function rich(parent, text) {
+    var last = 0, m;
+    IMG.lastIndex = 0;
+    while ((m = IMG.exec(text))) {
+      linkify(parent, text.slice(last, m.index));
+      var src = /^https:/.test(m[2]) ? m[2] : BASE + m[2], a = el('a', 'th-imga'), img = el('img', 'th-img');
+      a.href = src; a.target = '_blank'; a.rel = 'noopener'; a.title = '点开看原图';
+      img.src = src; img.alt = m[1] || '图片'; img.loading = 'lazy';
+      a.appendChild(img); parent.appendChild(a);
+      last = IMG.lastIndex;
+    }
+    linkify(parent, text.slice(last));
+  }
   function linkify(parent, text) {
     var re = /https?:\/\/[^\s<>"'，。！）】]+/g, last = 0, m;
     while ((m = re.exec(text))) {
@@ -221,11 +284,11 @@ function client() {
       right.appendChild(del);
     }
     head.appendChild(right); view.appendChild(head);
-    if (n.head) { var h = el('div', 'th-entry'), ht = el('div', 'th-text'); linkify(ht, n.head); h.appendChild(ht); view.appendChild(h); }
+    if (n.head) { var h = el('div', 'th-entry'), ht = el('div', 'th-text'); rich(ht, n.head); h.appendChild(ht); view.appendChild(h); }
     n.entries.slice().reverse().forEach(function (e) {
       var box = el('div', 'th-entry'), t = el('div', 'th-text');
       box.appendChild(el('div', 'th-at', e.at));
-      linkify(t, e.text); box.appendChild(t); view.appendChild(box);
+      rich(t, e.text); box.appendChild(t); view.appendChild(box);
     });
   }
   function show(name) {
@@ -281,16 +344,108 @@ function client() {
     var name = $('th-name').value, text = $('th-text').value, b = $('th-save');
     if (!name.trim()) { msg('先填 File name：输入新名字，或者从列表里选一篇'); return $('th-name').focus(); }
     if (!text.trim()) { msg('先写点内容'); return $('th-text').focus(); }
+    if (uploading) { msg('图片还在保存，等一下再点 Update'); return; }
     b.disabled = true; busy = true; msg('正在保存…');
     post({ action: 'update', name: name, text: text }).then(function (j) {
-      items = j.items; $('th-name').value = j.name; $('th-text').value = ''; saveDraft();
+      items = j.items; $('th-name').value = j.name; $('th-text').value = ''; saveDraft(); shots();
       current = j.name; renderList(); mode(); show(j.name); msg(j.message);
     }).catch(function (e2) { msg('保存失败：' + e2.message); }).then(function () { b.disabled = false; busy = false; });
   });
   $('th-text').addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if ($('th-form').requestSubmit) $('th-form').requestSubmit(); else $('th-save').click(); }
   });
-  $('th-text').addEventListener('input', saveDraft);
+  $('th-text').addEventListener('input', function () { saveDraft(); shots(); });
+
+  // images: Ctrl+V a screenshot, or drop image files on the box. Each is uploaded (big ones shrunk first) and its
+  // ![图片](images/...) goes where the cursor is; the thumbnails under the box show what the thought will include
+  function shots() {
+    var box = $('th-shots'), text = $('th-text').value, m, seen = {};
+    box.textContent = '';
+    IMG.lastIndex = 0;
+    while ((m = IMG.exec(text))) {
+      if (seen[m[0]]) continue;
+      seen[m[0]] = 1;
+      (function (ref, rel, src) {
+        var s = el('span', 'th-shot'), a = el('a'), img = el('img'), x = el('button', '', '×');
+        a.href = src; a.target = '_blank'; a.rel = 'noopener'; a.title = '点开看原图';
+        img.src = src; img.alt = '图片';
+        x.type = 'button'; x.title = '从这条随想里去掉这张图'; x.setAttribute('aria-label', '去掉这张图');
+        x.addEventListener('click', function (e) {
+          e.preventDefault(); e.stopPropagation();
+          var t = $('th-text');
+          t.value = t.value.split(ref + '\n').join('').split(ref).join('');
+          saveDraft(); shots(); t.focus();
+          if (online && /^images\//.test(rel) && t.value.indexOf('(' + rel + ')') < 0) post({ action: 'drop', path: rel }).catch(function () {});
+        });
+        a.appendChild(img); s.appendChild(a); s.appendChild(x); box.appendChild(s);
+      })(m[0], m[2], /^https:/.test(m[2]) ? m[2] : BASE + m[2]);
+    }
+  }
+  // a screenshot of a large screen can be several MB: wider than 1800px or over 1 MB, redraw it at most 1800px wide and
+  // keep the smallest of the original, PNG and WebP
+  function shrink(file) {
+    if (file.size <= 1024 * 1024 || file.type === 'image/gif') return Promise.resolve(file);
+    return new Promise(function (done) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var k = Math.min(1, 1800 / img.naturalWidth), c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(function (png) {
+          c.toBlob(function (webp) {
+            var all = [file, png, webp && webp.type === 'image/webp' ? webp : null].filter(Boolean);
+            done(all.sort(function (a, b) { return a.size - b.size; })[0]);
+          }, 'image/webp', 0.9);
+        }, 'image/png');
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); done(file); };
+      img.src = url;
+    });
+  }
+  function dataUrl(blob) {
+    return new Promise(function (ok, bad) { var r = new FileReader(); r.onload = function () { ok(r.result); }; r.onerror = function () { bad(r.error); }; r.readAsDataURL(blob); });
+  }
+  function insertAtCursor(t, s) {
+    var a = t.selectionStart, b = t.selectionEnd, before = t.value.slice(0, a), after = t.value.slice(b);
+    if (before && !/\n$/.test(before)) s = '\n' + s;
+    if (!/^\n/.test(after)) s += '\n';
+    t.setRangeText(s, a, b, 'end');
+  }
+  var uploading = 0;
+  function addImages(files) {
+    files = [].slice.call(files || []).filter(function (f) { return /^image\/(png|jpeg|gif|webp)$/.test(f.type); });
+    if (!files.length) return false;
+    if (!online) { msg('没有连接本地服务器，不能加图片'); return true; }
+    uploading += files.length; $('th-save').disabled = true;
+    msg('正在保存图片…');
+    files.reduce(function (p, f) {
+      return p.then(function () {
+        return shrink(f).then(dataUrl).then(function (data) { return post({ action: 'image', data: data }); }).then(function (j) {
+          insertAtCursor($('th-text'), '![图片](' + j.path + ')');
+          saveDraft(); shots();
+          msg('图片已保存，点 Update 和文字一起存进笔记');
+        }).catch(function (e) { msg('图片保存失败：' + e.message); }).then(function () { uploading--; });
+      });
+    }, Promise.resolve()).then(function () { if (!uploading) $('th-save').disabled = false; });
+    return true;
+  }
+  $('th-text').addEventListener('paste', function (e) {
+    var cd = e.clipboardData;
+    if (!cd || (cd.getData('text/plain') || '').trim()) return;     // text (also when it comes with a picture of it, as from Excel)
+    var files = [].slice.call(cd.files || []);
+    if (!files.length && cd.items) [].slice.call(cd.items).forEach(function (it) { if (it.kind === 'file') { var f = it.getAsFile(); if (f) files.push(f); } });
+    if (addImages(files)) e.preventDefault();
+  });
+  $('th-text').addEventListener('dragover', function (e) {
+    if (e.dataTransfer && [].slice.call(e.dataTransfer.types || []).indexOf('Files') >= 0) { e.preventDefault(); $('th-text').classList.add('th-drop'); }
+  });
+  $('th-text').addEventListener('dragleave', function () { $('th-text').classList.remove('th-drop'); });
+  $('th-text').addEventListener('drop', function (e) {
+    $('th-text').classList.remove('th-drop');
+    if (e.dataTransfer && addImages(e.dataTransfer.files)) e.preventDefault();
+  });
+  shots();
   $('th-name').addEventListener('input', function () {
     saveDraft(); mode();
     var it = find($('th-name').value);
@@ -313,7 +468,7 @@ function page({ shell }) {
     + `<div class="th-main">`
     + `<form id="th-form" class="th-form" hidden>`
     + `<label for="th-name">File name</label><input id="th-name" type="text" list="th-names" autocomplete="off" maxlength="60" placeholder="输入新名字，或选一篇已有的笔记"><datalist id="th-names"></datalist>`
-    + `<label for="th-text">随想</label><textarea id="th-text" placeholder="想到什么写什么…"></textarea>`
+    + `<label for="th-text">随想</label><textarea id="th-text" placeholder="想到什么写什么…可以 Ctrl+V 粘贴截图，或者把图片拖进来"></textarea><div id="th-shots" class="th-shots"></div>`
     + `<div class="th-actions"><button id="th-save" class="th-btn th-primary" type="submit">Update</button><span id="th-mode" class="muted"></span></div>`
     + `</form>`
     + `<p id="th-msg" class="muted"></p>`
@@ -324,4 +479,4 @@ function page({ shell }) {
   return { file: FILE };
 }
 
-module.exports = { FILE, TITLE, DIR_REL, INDEX_REL, PATH, parse, list, writeIndex, handle, merge, page };
+module.exports = { FILE, TITLE, DIR_REL, INDEX_REL, PATH, IMAGE, parse, list, writeIndex, handle, merge, page };

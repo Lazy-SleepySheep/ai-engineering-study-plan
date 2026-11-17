@@ -1,6 +1,8 @@
-// 刷题记录: three tabs, LeetCode (the Top Interview 150, one column per LeetCode topic; solved problems are green with a
-// check), Pattern (the 41 LeetCode patterns of the 10:30 block, patterns.cjs; ticked there or in the timetable) and
-// Hello Interview (the 13:45 block, hello-interview.cjs, one column per week; a day is done when its ☐ is ticked).
+// 刷题记录: five tabs, LeetCode (the Top Interview 150, one column per LeetCode topic; solved problems are green with a
+// check), Pattern (the 41 LeetCode patterns of the Data Structure & Algo block, patterns.cjs; ticked there or in the timetable),
+// Hello Interview (the 13:45 block, hello-interview.cjs, one column per week; a day is done when its ☐ is ticked), and
+// System Design and AI Coding (every Hello Interview practice problem, hi-problems.cjs, one column per difficulty;
+// ticked right in the tab, the date of the tick is kept).
 // A problem counts as solved when any of its ticks in the timetable is checked (its day, a review day or a repeat day).
 // build.cjs writes AI_ENGINEER_TOP150_RECORD.html with the state at build time; the page then reads the live ticks from
 // /api/progress (local server), or falls back to that state plus the ticks saved in this browser.
@@ -8,6 +10,7 @@ const fs = require('fs'), path = require('path');
 const progress = require('./progress.cjs');
 const patterns = require('./patterns.cjs');
 const hi = require('./hello-interview.cjs');
+const hp = require('./hi-problems.cjs');
 
 const FILE = 'AI_ENGINEER_TOP150_RECORD.html', TITLE = '刷题记录';
 // LeetCode's own topic order for the study plan; a topic not listed here goes at the end
@@ -50,10 +53,11 @@ const style = `<style>
 .rec-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:0 0 6px}
 .rec-head h1{margin:0}
 .rec-tabs{display:inline-flex;border:1px solid #c9d6de;border-radius:8px;overflow:hidden;background:#fff}
-.rec-tabs button{border:0;background:none;padding:6px 14px;font:inherit;font-size:14px;color:#33454f;cursor:pointer}
+.rec-tabs button{border:0;background:none;padding:6px 14px;font:inherit;font-size:14px;color:#33454f;cursor:pointer;scroll-margin-top:calc(var(--bar-h,0px) + 8px)}
 .rec-tabs button+button{border-left:1px solid #c9d6de}
 .rec-tabs button[aria-selected="true"]{background:var(--accent);color:#fff}
 .rec-tabs .rec-tab-n{margin-left:6px;font-size:12px;opacity:.85}
+@media(max-width:600px){.rec-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));width:100%}.rec-tabs button{white-space:nowrap;padding:6px 8px;font-size:13.5px;box-shadow:0 0 0 .5px #c9d6de}.rec-tabs button+button{border-left:0}}
 .rec-note{margin:0 0 10px;font-size:13px}
 .rec-sum{display:flex;flex-wrap:wrap;align-items:center;gap:4px 18px;background:#fff;border:1px solid #dce4ea;border-radius:10px;padding:8px 14px;margin:0 0 12px}
 .rec-big{font-size:18px;font-weight:600}
@@ -83,18 +87,26 @@ li.rec-p.done .rec-title a{color:#116329}
 function client() {
   var items = [].slice.call(document.querySelectorAll('.rec-p')), P = 'study-plan:', TAB = 'study-record-tab';
   var panels = [].slice.call(document.querySelectorAll('.rec-panel')), tabs = [].slice.call(document.querySelectorAll('.rec-tabs button'));
+  var chips = [].slice.call(document.querySelectorAll('.rec-day[data-keys]')), boxes = [].slice.call(document.querySelectorAll('.rec-box'));
   var built = items.map(function (li) { return li.classList.contains('done'); });
   var web = location.protocol !== 'file:' && ['127.0.0.1', 'localhost'].indexOf(location.hostname) < 0;   // GitHub Pages
-  function ls(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  var online = false, last = {}, NOTE_ON = '已连接本地服务器：显示最新的勾选，切回这个页面时会自动刷新';
+  function ls(k, v) { try { if (arguments.length > 1) { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); return null; } return localStorage.getItem(k); } catch (e) { return null; } }
+  function md(d) { var m = /(\d{4})-(\d{2})-(\d{2})$/.exec(d || ''); return m ? +m[2] + '/' + +m[3] : ''; }
+  function today() { var n = new Date(); return n.getFullYear() + '-' + ('0' + (n.getMonth() + 1)).slice(-2) + '-' + ('0' + n.getDate()).slice(-2); }
   function keys(li) { return li.dataset.keys.split(' '); }
   function bar(el, done, total) { el.style.width = (total ? 100 * done / total : 0).toFixed(1) + '%'; }
   function set(root, sel, v) { [].slice.call(root.querySelectorAll(sel)).forEach(function (el) { el.textContent = v; }); }
-  function show(isDone, note) {
+  // has(k): is tick k checked; label(k): its label (the live ticks); useBuilt: also count what was ticked when the page was built
+  function show(has, label, useBuilt, note) {
     items.forEach(function (li, i) {
-      var d = isDone(li, i);
+      var ks = keys(li), d = ks.some(has) || (useBuilt && built[i]), box = li.querySelector('.rec-box');
       li.classList.toggle('done', d);
-      li.querySelector('.rec-ck').textContent = d ? '✓' : '';
+      if (!box) { li.querySelector('.rec-ck').textContent = d ? '✓' : ''; return; }
+      box.checked = d;
+      li.querySelector('.rec-when').textContent = d ? md(label(ks[0]) || (built[i] ? li.dataset.when : '')) : '';
     });
+    chips.forEach(function (c) { c.classList.toggle('ok', c.dataset.keys.split(' ').some(has) || (useBuilt && c.dataset.built === '1')); });
     panels.filter(function (panel) { return panel.querySelector('.rec-p'); }).forEach(function (panel) {
       var all = panel.querySelectorAll('.rec-p'), done = [].slice.call(panel.querySelectorAll('.rec-p.done'));
       set(panel, '.rec-done', done.length);
@@ -113,14 +125,16 @@ function client() {
     });
   }
   function offline() {
-    show(function (li, i) { return built[i] || keys(li).some(function (k) { return ls(P + k) === '1'; }); },
+    online = false;
+    show(function (k) { return ls(P + k) === '1'; }, function () { return ''; }, true,
       web ? '网页版：显示的是上次推送到 GitHub 时的进度，加上这台设备里的勾选' : '没有连接本地服务器：显示的是上次生成页面时的进度，加上这个浏览器里的勾选');
   }
   function load() {
     if (location.protocol === 'file:') return offline();
     fetch('/api/progress', { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (st) {
-      var t = st.ticks || {};
-      show(function (li) { return keys(li).some(function (k) { return t[k]; }); }, '已连接本地服务器：显示最新的勾选，切回这个页面时会自动刷新');
+      online = true;
+      last = st.ticks || {};
+      show(function (k) { return !!last[k]; }, function (k) { return last[k]; }, false, NOTE_ON);
     }).catch(offline);
   }
   function pick(name, save) {
@@ -132,6 +146,21 @@ function client() {
       history.replaceState(null, '', '#' + name);
     }
   }
+  // System Design / AI Coding: tick a problem on the day it was practised; the label keeps the date
+  boxes.forEach(function (box) {
+    box.addEventListener('change', function () {
+      var li = box.closest('.rec-p'), key = keys(li)[0], on = box.checked, label = li.dataset.label + ' · ' + today();
+      ls(P + key, on ? '1' : '');
+      if (!online) return offline();
+      fetch('/api/progress', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Study': '1' }, body: JSON.stringify({ key: key, done: on, label: label }) })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(function (j) { last = (j.state && j.state.ticks) || {}; ls(P + key, ''); show(function (k) { return !!last[k]; }, function (k) { return last[k]; }, false, NOTE_ON); })
+        .catch(function () {
+          if (on) last[key] = label; else delete last[key];
+          show(function (k) { return !!last[k]; }, function (k) { return last[k]; }, false, '保存到服务器失败，已先存在这个浏览器里（服务器是这次更新之前启动的话，关掉再运行一次 start-server.bat）');
+        });
+    });
+  });
   tabs.forEach(function (b) { b.addEventListener('click', function () { pick(b.dataset.tab, true); }); });
   window.addEventListener('hashchange', function () { pick(location.hash.slice(1), false); });
   pick(location.hash.slice(1) || ls(TAB) || '', false);
@@ -143,7 +172,7 @@ function page(md, { shell, esc }) {
   const pct = (d, n) => (n ? 100 * d / n : 0).toFixed(1) + '%';
   const dayLink = (day, tip) => `<a href="AI_ENGINEER_TRANSITION_PLAN.html#day-${pad(day)}" target="_blank" rel="noopener"${tip ? ` title="${esc(tip)}"` : ''}>Day ${pad(day)}</a>`;
   // one tab: summary (done / left, bar, count lines) and one column per section
-  const panel = (tab, list, sections, lines, item, [doneWord, unit] = ['已刷', '题']) => {
+  const panel = (tab, list, sections, lines, item, [doneWord, unit] = ['已刷', '题'], note = '') => {
     const done = list.filter(p => p.done).length;
     const line = ([key, label, values]) => `<span class="rec-line">${label ? label + ' ' : ''}${values.map(v => {
       const all = list.filter(p => p[key] === v);
@@ -156,7 +185,7 @@ function page(md, { shell, esc }) {
     };
     return `<div class="rec-panel" data-tab="${tab}"${tab === 'leetcode' ? '' : ' hidden'}>`
       + `<div class="rec-sum"><span class="rec-big">${doneWord} <span class="rec-done">${done}</span> / ${list.length}<span class="muted"> · 还剩 <span class="rec-left">${list.length - done}</span> ${unit}</span></span>`
-      + `<span class="rec-bar"><span style="width:${pct(done, list.length)}"></span></span>${lines.map(line).join('')}<p class="rec-msg muted"></p></div>`
+      + `<span class="rec-bar"><span style="width:${pct(done, list.length)}"></span></span>${lines.map(line).join('')}<p class="rec-msg muted"></p></div>${note}`
       + `<div class="rec-grid">${sections.map(col).join('')}</div></div>`;
   };
   const li = (p, link, day, tip) => `<li class="rec-p${p.done ? ' done' : ''}" data-keys="${esc(p.keys.join(' '))}" data-diff="${esc(p.diff)}">`
@@ -180,21 +209,27 @@ function page(md, { shell, esc }) {
   const KIND = { 'System Design': 'SD', 'AI Coding': 'AI Coding', '基础': '基础', '复盘': '复盘' };
   const hiList = hi.items(md);
   const hiItem = p => `<li class="rec-p${p.done ? ' done' : ''}" data-keys="${esc(p.keys.join(' '))}" data-group="${esc(p.group)}">`
-    + `<span class="rec-ck" aria-hidden="true">${p.done ? '✓' : ''}</span><span class="rec-title"><a href="${esc(p.links[0][1])}" target="_blank" rel="noopener" title="${esc(p.task)}">${esc(p.title)}</a></span>`
-    + `<span class="rec-meta">${esc(KIND[p.kind])} · ${dayLink(p.day, p.hi ? 'Hello Interview 计划的 Day ' + pad(p.hi) : '')}</span></li>`;
+    + `<span class="rec-ck" aria-hidden="true">${p.done ? '✓' : ''}</span><span class="rec-title"><a href="${esc(hi.mainLink(p))}" target="_blank" rel="noopener" title="${esc(p.task)}">${esc(p.title)}</a></span>`
+    + `<span class="rec-meta">${esc(KIND[p.kind])} · ${dayLink(p.day)}</span></li>`;
+
+  const hpTracks = hp.tracks(md);
 
   const count = list => `${list.filter(p => p.done).length} / ${list.length}`;
-  const body = `${style}${patterns.style}<div class="rec-head"><h1>${TITLE}</h1><div class="rec-tabs" role="tablist">`
+  const body = `${style}${patterns.style}${hp.style}<div class="rec-head"><h1>${TITLE}</h1><div class="rec-tabs" role="tablist">`
     + `<button type="button" role="tab" id="leetcode" data-tab="leetcode" aria-selected="true">LeetCode<span class="rec-tab-n" data-tab="leetcode">${count(lc)}</span></button>`
     + `<button type="button" role="tab" id="pattern" data-tab="pattern" aria-selected="false">Pattern<span class="rec-tab-n" data-tab="pattern">${pt.done} / ${pt.total}</span></button>`
-    + `<button type="button" role="tab" id="hellointerview" data-tab="hellointerview" aria-selected="false">Hello Interview<span class="rec-tab-n" data-tab="hellointerview">${count(hiList)}</span></button></div></div>`
-    + `<p class="rec-note muted">LeetCode 的勾选在<a href="AI_ENGINEER_TRANSITION_PLAN.html">每日时间表</a>里做，当天、复习日或重复的那天勾过一次就算做了；按 LeetCode 的专题分列，每列按日期排序，鼠标停在 Day 上能看到其他日期。Pattern 可以直接在表里打勾，和时间表当天 10:30 那一格是同一个勾。Hello Interview 在时间表 13:45 那一格打勾，每周一列，鼠标停在题目上能看到当天要做什么。</p>`
+    + `<button type="button" role="tab" id="hellointerview" data-tab="hellointerview" aria-selected="false">Hello Interview<span class="rec-tab-n" data-tab="hellointerview">${count(hiList)}</span></button>`
+    + hpTracks.map(t => `<button type="button" role="tab" id="${t.tab}" data-tab="${t.tab}" aria-selected="false">${t.name}<span class="rec-tab-n" data-tab="${t.tab}">${count(t.items)}</span></button>`).join('')
+    + `</div></div>`
+    + `<p class="rec-note muted">LeetCode 的勾选在<a href="AI_ENGINEER_TRANSITION_PLAN.html">每日时间表</a>里做，当天、复习日或重复的那天勾过一次就算做了；按 LeetCode 的专题分列，每列按日期排序，鼠标停在 Day 上能看到其他日期。Pattern 可以直接在表里打勾，和时间表当天 Data Structure & Algo 那一格的 pattern 是同一个勾。Hello Interview 在时间表 13:45 那一格打勾，每周一列，鼠标停在题目上能看到当天要做什么。System Design 和 AI Coding 是 Hello Interview 题库里的全部练习题，练过哪道就在表里直接打勾。</p>`
     + panel('leetcode', lc, lcSections, [['diff', '', DIFFS]], lcItem)
     + pt.panel
     + panel('hellointerview', hiList, [...new Set(hiList.map(p => p.section))], [['group', '', hi.GROUPS]], hiItem, ['已完成', '天'])
+    + hpTracks.map(t => panel(t.tab, t.items.map(p => ({ ...p, section: p.diff })), hp.DIFFS.filter(d => t.items.some(p => p.diff === d)),
+      [['diff', '', hp.DIFFS], ['planned', '', hp.PLAN]], p => hp.item(p, esc), ['已练', '题'], hp.note(t))).join('')
     + `<script>(${client.toString()})();(${patterns.client.toString()})();</script>`;
   fs.writeFileSync(FILE, shell(TITLE, body, true));
-  return { file: FILE, leetcode: lc.length, patterns: pt.total, helloInterview: hiList.length };
+  return { file: FILE, leetcode: lc.length, patterns: pt.total, helloInterview: hiList.length, systemDesign: hpTracks[0].items.length, aiCoding: hpTracks[1].items.length };
 }
 
 module.exports = { FILE, TITLE, problems, page };

@@ -1,0 +1,250 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Scaling Writes · Summary</title><link rel="stylesheet" href="../../../Study%20topics/style.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script><style>article{background:#fff;border:1px solid #dce4ea;border-radius:12px;padding:8px 24px 20px}article h1{font-size:26px}article table{margin:10px 0}article li{margin:4px 0}@media(max-width:600px){article{padding:4px 14px 14px}}</style></head><body><main><p class="muted">System Design · Patterns · <a href="../../../Reports/AI_ENGINEER_TRANSITION_PLAN.html#day-14">Day 14 读</a> · <a href="https://www.hellointerview.com/learn/system-design/patterns/scaling-writes">网页</a> · <a href="../../Hello_Interview_System_Design/HTML/044%20How%20to%20scale%20writes%20in%20your%20system%20design%20interview%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a> · <a href="obsidian://open?vault=JuJu_Workspace&amp;file=02_Knowledge%2FProgramming%2Fsystem_design%2FScaling%20Writes">在 Obsidian 里打开</a></p><article><h1>Scaling Writes</h1>
+<h2>2026-11-16 · Scaling Writes</h2>
+<p>来源：<a href="../../Hello_Interview_System_Design/HTML/044%20How%20to%20scale%20writes%20in%20your%20system%20design%20interview%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a></p>
+<p>NotebookLM 报告：<a href="https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f">https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f</a></p>
+<h1>系统设计面试中的写入扩展（Scaling Writes）简报</h1>
+<h2>1. 执行摘要（Executive Summary）</h2>
+<p>在系统设计面试中，当应用程序的写入需求从每秒数百次增长到数百万次时，单台数据库或服务器会在磁盘 I/O、CPU 和网络带宽方面达到硬性极限，形成严重的性能瓶颈。相比于读取端的扩展（如只读副本、缓存等），写入端的扩展通常面临更大的技术挑战。面对突发、高吞吐且存在大量资源竞争的写入场景，仅依靠增加硬件（垂直扩展）往往无法彻底解决问题。</p>
+<p>实现系统写入扩展的核心原则在于<strong>降低单个组件所承担的吞吐量</strong>。本简报基于源文档，系统性地梳理了实现高吞吐写入扩展的四大核心策略：</p>
+<ol>
+<li><strong>垂直扩展与数据库选型优化</strong>：榨干单机硬件性能并针对写入场景选择特定的数据库及配置。</li>
+<li><strong>水平分片与垂直分区</strong>：通过合理的键选择分散写入压力，或按数据访问模式拆分列。</li>
+<li><strong>利用队列与削峰丢包处理突发流量</strong>：通过异步队列平滑短期流量峰值，或主动丢弃非关键写入以保护系统。</li>
+<li><strong>批处理与分级聚合</strong>：在应用层、中间层或数据库层合并写入，或通过多级分阶段处理大幅削减写入总量。</li>
+</ol>
+<p>在面试中，优秀的候选人应当能够主动识别写入瓶颈，通过估算（Back-of-the-envelope math）验证规模，权衡读写性能之间的矛盾（Read/Write Tension），并根据具体业务场景（如社交媒体、新闻推送、搜索引擎、实时直播评论等）采取针对性的扩展架构。</p>
+<hr>
+<h2>2. 核心主题详细分析（Detailed Analysis of Key Themes）</h2>
+<h3>主题一：垂直扩展与数据库选型优化（Vertical Scaling &amp; Database Choices）</h3>
+<p>在引入复杂的分布式架构之前，首先应当确认是否已经充分利用了单机硬件与本地软件配置。</p>
+<h4>1. 垂直扩展（Vertical Scaling）</h4>
+<ul>
+<li><strong>硬件能力极限</strong>：写入操作的主要瓶颈在于磁盘 I/O、CPU 或网络带宽。现代云服务商和数据中心提供了极为强大的单机硬件（例如拥有 200 个 CPU 核心和 10Gbps 网络接口的系统）。</li>
+<li><strong>面试策略</strong>：在增加架构复杂度之前，先进行简要的数量级估算（Back-of-the-envelope math），验证现有硬件是否能支撑目标写入吞吐量。高级别（Staff+）候选人通常能准确评估性能曲线边缘，但若面试官坚持要求处理超越单机极限的规模，应迅速转向水平扩展讨论。</li>
+</ul>
+<h4>2. 针对写入优化的数据库选择（Database Choices）</h4>
+<p>通用数据库在混合负载下表现尚可，但在极端写入场景下需做出取舍。<strong>写性能的优化往往以牺牲读性能为代价（Write vs. Read Tension）</strong>。</p>
+<ul>
+<li><strong>Cassandra</strong>：采用仅追加提交日志（Append-only commit log）架构，将数据顺序写入磁盘，避免了高昂的磁盘寻道（Disk seek）。在中等硬件上可实现 10,000+ 次/秒的写入，而做原位更新（In-place update）的传统关系型数据库仅能达到约 1,000 次/秒。<em>代价</em>：读取时需检查多个文件并合并结果，读性能较差。</li>
+<li><strong>时序数据库（InfluxDB, TimescaleDB）</strong>：专为带时间戳的高并发顺序写入设计，内置 Delta 编码以优化存储。</li>
+<li><strong>日志结构数据库（LevelDB）</strong>：追加新数据而非原位修改。</li>
+<li><strong>列式存储（ClickHouse）</strong>：能够高效批处理写入，适用于分析型负载。</li>
+</ul>
+<h4>3. 通用数据库的写入调优手段</h4>
+<p>针对任意数据库，可通过以下方式提升写入性能：</p>
+<ul>
+<li>在高写入期间禁用高昂的功能（如外键约束、复杂触发器、全文检索索引）。</li>
+<li>优化预写日志（Write-Ahead Logging, WAL），例如 PostgreSQL 可在刷盘前批处理多个事务。</li>
+<li>减少索引数量：索引越少写入越快，但读取性能会降低。</li>
+</ul>
+<hr>
+<h3>主题二：水平分片与垂直分区（Sharding &amp; Partitioning）</h3>
+<p>当单机硬件达到极限时，需要采用水平扩展策略。</p>
+<h4>1. 水平分片（Horizontal Sharding）</h4>
+<p>通过将写入数据分散到多台服务器（分片）上，使每台服务器处理可控的流量。</p>
+<ul>
+<li><strong>实现机制（以 Redis Cluster 为例）</strong>：Redis 通过 CRC 哈希算法将每个键映射到一个“槽位号”（Slot number），槽位被分配给集群中的不同节点。客户端查询集群获取槽位映射表后，直接向对应节点发送写入请求。</li>
+</ul>
+<h4>2. 选择合适的分片键（Partitioning Key）</h4>
+<p>分片成功的关键在于选择能使数据均匀分布的分片键，从而将写入方差降至最低（即“越平坦越好”）。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">分片键策略</th>
+<th align="left">示例</th>
+<th align="left">结果/风险</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>优选键</strong></td>
+<td align="left">对主标识符（如 <code>userId</code>, <code>postId</code>）进行哈希</td>
+<td align="left">写入流量均匀平摊到各个分片，充分实现扩展效益。</td>
+</tr>
+<tr>
+<td align="left"><strong>劣选键</strong></td>
+<td align="left">按用户所在国家（如 <code>country</code>）进行分区</td>
+<td align="left">导致严重的数据倾斜（如人口众多的中国分片过载，而新西兰分片未被充分利用）。</td>
+</tr>
+</tbody></table></div>
+<ul>
+<li><strong>读写权衡</strong>：选择分片键时必须兼顾读取路径。如果写入被分散到所有分片，但每次读取请求都需要从每个分片收集数据（Scatter-Gather），网络开销将极其巨大。需评估：“该请求需要触及多少个分片？”以及“该请求发生的频率如何？”。</li>
+</ul>
+<h4>3. 垂直分区（Vertical Partitioning）</h4>
+<p>垂直分片拆分行，而垂直分区按数据访问模式和扩展要求拆分列，将不同性质的数据独立存放。</p>
+<p><strong>示例：社交媒体帖子（Post）数据拆分</strong></p>
+<p>传统的单表结构会将内容、互动指标和分析数据混合在一起，导致写操作、指标更新与分析扫描相互干扰。垂直分区将其拆分为三张专门的表，并可部署在不同的数据库实例上：</p>
+<pre><code>-- 核心帖子内容（一次写入，多次读取）：使用传统 B-Tree 索引，优化读取性能
+TABLE post_content (
+    post_id BIGINT PRIMARY KEY,
+    user_id BIGINT,
+    content TEXT,
+    media_urls TEXT[],
+    created_at TIMESTAMP
+);
+
+-- 互动指标（高频写入更新）：使用内存存储或专门的计数器数据库
+TABLE post_metrics (
+    post_id BIGINT PRIMARY KEY,
+    like_count INTEGER DEFAULT 0,
+    comment_count INTEGER DEFAULT 0,
+    share_count INTEGER DEFAULT 0,
+    view_count INTEGER DEFAULT 0,
+    last_updated TIMESTAMP
+);
+
+-- 分析数据（仅追加，时序）：使用时序优化存储或列式压缩数据库
+TABLE post_analytics (
+    post_id BIGINT,
+    event_type VARCHAR(50),
+    timestamp TIMESTAMP,
+    user_id BIGINT,
+    metadata JSONB
+);
+</code></pre>
+<hr>
+<h3>主题三：突发流量处理：写队列与削峰丢包（Handling Bursts with Queues &amp; Load Shedding）</h3>
+<p>真实的写入流量存在突发性（如黑五购物节订单量翻 4 倍，或跨年夜司机数量翻 3 倍）。自动扩缩容（Autoscaling）并非万灵药，因为数据库扩缩容需要时间，且在此期间可能导致停机或吞吐量降低。</p>
+<h4>1. 写队列（Write Queues）</h4>
+<p>使用 Kafka 或 SQS 等消息队列实现写入接收与写入处理的解耦。</p>
+<ul>
+<li><strong>核心优势</strong>：缓冲突发流量（Burst Absorption），平滑流量尖峰。数据库可以以稳定的速率处理写入，而队列吸收突发量。</li>
+<li><strong>局限与风险</strong>：<ul>
+<li>队列是异步的，应用服务器仅确认数据已入队，无法保证已写入数据库。客户端通常需要轮询或回调来确认写入状态。</li>
+<li><strong>队列仅能解决短期突发</strong>。如果应用写入队列的速度持续高于数据库处理速度，会导致队列无限制增长，写入延迟无限延长。</li>
+<li>不能用队列来掩盖数据库无法承受常态负载（Steady-state load）的基础缺陷。</li>
+</ul>
+</li>
+</ul>
+<h4>2. 削峰丢包策略（Load Shedding）</h4>
+<p>在系统过载时，主动决策接受哪些写入并丢弃哪些写入，这比让整个系统崩溃更为有效。</p>
+<ul>
+<li><strong>适用场景</strong>：<ul>
+<li><strong>位置更新（如 Uber、Strava）</strong>：用户每隔几秒上报一次位置。在系统过载时丢弃当前写入是安全的，因为几秒后用户会发送更新、更鲜活的位置数据。</li>
+<li><strong>数据分析系统</strong>：在过载期间丢弃展示量（Impressions）数据，以优先保证更关键的点击量（Clicks）数据被处理。</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h3>主题四：批处理与分级聚合（Batching &amp; Hierarchical Aggregation）</h3>
+<p>通过改变写入的数据结构，使其在物理层面更容易被数据库处理。</p>
+<h4>1. 批处理（Batching）</h4>
+<p>将多个独立写入打包在一起，分摊网络往返、事务建立和索引更新的开销。</p>
+<ul>
+<li><strong>应用层批处理</strong>：例如从 Kafka Topic 读取数据、处理后批量写入数据库。如果应用不是数据的唯一事实来源（Source of truth），崩溃后可重新读取 Kafka 恢复；若应用是事实来源，则需承担应用崩溃导致内存中已确认数据丢失的风险。</li>
+<li><strong>中间层批处理（如点赞批处理器 Like Batcher）</strong>：中间进程在时间窗口（如 1 分钟）内汇总特定帖子的点赞数变更。若某帖子 1 分钟内获得 100 个赞，写入数据库的次数从 100 次降至 1 次。<em>注意</em>：若帖子每小时仅获 1 个赞，1 分钟的批处理频率收益为 0，需评估批处理的实际有效性。</li>
+<li><strong>数据库层批处理</strong>：调整数据库将写入刷新到磁盘的频率（如 Redis 默认每 100ms 刷盘一次）。此方法属于极端手段。</li>
+</ul>
+<h4>2. 分级聚合（Hierarchical Aggregation）</h4>
+<p>针对极高流量的数据（如分析数据或实时流处理），采用多阶段增量构建聚合视图。</p>
+<p><strong>示例：实时视频直播评论与点赞</strong>
+在数百万观众同时观看并点赞/评论的场景下，若将每个人的写入实时广播给所有人，会导致 N 对 N 的网状压力。</p>
+<ul>
+<li><strong>解法</strong>：<ol>
+<li><strong>广播节点分发（Dis-aggregation）</strong>：利用一致性哈希将观众分配到 M 个广播节点，写入只需发送至广播节点，再由广播节点转发给各自连接的观众。</li>
+<li><strong>写入处理器聚合（Hierarchical Aggregation）</strong>：按评论 ID 分发给特定的写入处理器（Write Processors）。写入处理器在时间窗口内聚合点赞数，并将批量更新发送给根处理器（Root Processor）进行合并。</li>
+</ol>
+</li>
+<li><strong>结果</strong>：牺牲了微小的延迟（引入了处理步骤），大幅降低了任何单一系统所需承担的写入频次。</li>
+</ul>
+<hr>
+<h2>3. 面试高频深钻问题（Common Deep Dives）</h2>
+<h3>问题一：&quot;当需要添加更多分片时，如何处理重新分片（Resharding）？&quot;</h3>
+<ul>
+<li><strong>错误做法</strong>：系统下线 -&gt; 重新哈希所有数据 -&gt; 迁移至新分片。这会导致大型数据集出现数小时的停机。</li>
+<li><strong>标准生产实践（渐进式双写迁移）</strong>：<ol>
+<li><strong>双写阶段（Dual-Write Phase）</strong>：将新写入同时发送到旧分片和新分片，确保迁移期间无数据丢失。</li>
+<li><strong>读取偏好调整</strong>：读取时优先从新分片读取。</li>
+<li><strong>数据渐进迁移</strong>：在保持系统高可用性的同时，后台逐步迁移历史数据。</li>
+</ol>
+</li>
+</ul>
+<h3>问题二：&quot;当存在一个极其热门的键（Hot Key），连单个分片都无法承受时怎么办？&quot;</h3>
+<p>例如：一条引发病毒式传播的推文每秒产生 100,000 次点赞，即使为该推文单独分配一个分片也无法承受压力。</p>
+<h4>应对方案对比：</h4>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">解决策略</th>
+<th align="left">工作原理</th>
+<th align="left">优点</th>
+<th align="left">缺点 / 权衡</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>固定拆分所有键 (Split All Keys)</strong></td>
+<td align="left">将所有键固定拆分为 $k$ 个子键（如 <code>post1Likes-0</code> 到 <code>post1Likes-k-1</code>）。写入随机路由至某个子键分片。</td>
+<td align="left">实现最为简单直接。分片写入压力降低 $k$ 倍。</td>
+<td align="left">1. 整体数据集规模膨胀 $k$ 倍。<br>2. 读取压力放大 $k$ 倍：获取总点赞数必须扫描并聚合全部 $k$ 个子键。</td>
+</tr>
+<tr>
+<td align="left"><strong>动态拆分热键 (Split Hot Keys Dynamically)</strong></td>
+<td align="left">仅在检测到某个键变热时，动态将其拆分为多个子键（如 100 个子键）。</td>
+<td align="left">避免了非热键的资源浪费与读取放大。</td>
+<td align="left">需解决“读写双方如何就热键状态达成一致”的复杂性。</td>
+</tr>
+</tbody></table></div>
+<h4>动态拆分热键时读写一致性的两种解法：</h4>
+<ol>
+<li><strong>读者总是检查所有子键（推荐）</strong>：写者通过本地统计检测到热键时条件性写入子键；读者在读取时固定扫描所有可能的子键。虽然存在读取放大，但实现简单，生产系统最常用。</li>
+<li><strong>写者向读者广播拆分信息</strong>：写者在执行拆分前通知所有读者。该方式避免了读者读取不存在的子键，效率更高，但实现极其复杂且需防范协调失败。</li>
+</ol>
+<hr>
+<h2>4. 重要引言与语境（Important Quotes with Context）</h2>
+<ol>
+<li><blockquote>
+<p><strong>“Write scaling isn&#39;t (only) about throwing more hardware at the problem, there&#39;s a bunch of architectural choices we can make which improve the system&#39;s ability to scale.”</strong></p>
+</blockquote>
+<ul>
+<li><strong>语境</strong>：作者在讨论扩展策略时强调，写入扩展不仅仅是堆砌硬件，更关乎在架构层面做出合理的选择（如选型、分片、队列和批处理）。</li>
+</ul>
+</li>
+<li><blockquote>
+<p><strong>“Optimizing for write performance often degrades read performance, and vice versa. You need to identify which is your bottleneck - writes or reads - and optimize accordingly.”</strong></p>
+</blockquote>
+<ul>
+<li><strong>语境</strong>：在对比 Cassandra（顺序追加）与传统关系型数据库（原位更新 B-Tree）时，作者指出了扩展写入时不可避免的“读写张力/矛盾”。</li>
+</ul>
+</li>
+<li><blockquote>
+<p><strong>“Use queues when you expect to have bursts that are short-lived, not to patch a database that can&#39;t handle the steady-state load.”</strong></p>
+</blockquote>
+<ul>
+<li><strong>语境</strong>：针对候选人滥用消息队列的常见误区，作者明确指出了写队列的正确边界——队列仅能缓冲短期突发，无法解决数据库常态吞吐能力不足的问题。</li>
+</ul>
+</li>
+<li><blockquote>
+<p><strong>“The key insight is that write scaling is about reducing throughput per component. Whether you&#39;re spreading 10,000 writes across 10 shards, smoothing bursts through queues, or batching them into 100 bulk operations, you&#39;re applying the same principle: make each individual component handle manageable load.”</strong></p>
+</blockquote>
+<ul>
+<li><strong>语境</strong>：全文总结性引言，归纳了所有写入扩展技术方案背后的底层共同物理本质：降低单个组件所受的压力。</li>
+</ul>
+</li>
+</ol>
+<hr>
+<h2>5. 可操作洞察与实用建议（Actionable Insights）</h2>
+<h3>面试实操建议与检查清单</h3>
+<ol>
+<li><p><strong>主动估算，拒绝盲目扩展</strong>：</p>
+<ul>
+<li>在提出任何复杂的写入扩展架构前，先通过估算（Back-of-the-envelope math）确认当前的写入 TPS/BPS。如果单机硬件（如 200 核 CPU、10Gbps 网卡）配合调优后的数据库即可承载，不要过早引入分片或队列。</li>
+</ul>
+</li>
+<li><p><strong>常见面试场景模式匹配</strong>：</p>
+<ul>
+<li><strong>Instagram / 社交媒体</strong>：按 <code>userId</code> 进行水平分片；按数据类型进行垂直分区（帖子内容、互动指标、分析数据分离）；旧帖子采用分级存储。</li>
+<li><strong>新闻推送（News Feeds）</strong>：权衡明星大 V 发帖的写入压力（需推送到数百万粉丝）与粉丝拉取动态时的读取压力。</li>
+<li><strong>搜索引擎（Search Applications）</strong>：写入密集且需要大量预处理，重点运用<strong>分区（Partitioning）<strong>与</strong>批处理（Batching）</strong>。</li>
+<li><strong>直播评论/点赞（Live Comments）</strong>：采用**分级聚合（Hierarchical Aggregation）**与广播节点分发，避免网状全量推送。</li>
+</ul>
+</li>
+<li><p><strong>权衡意识（Trade-offs）表达</strong>：
+在向面试官提出方案时，必须同时主动说明该方案带来的副作用：</p>
+<ul>
+<li><em>引入队列</em> $\rightarrow$ 带来了最终一致性与写入延迟，需要客户端提供轮询/回调机制。</li>
+<li><em>水平分片</em> $\rightarrow$ 可能会损害跨分片查询的读取性能（Scatter-Gather 问题）。</li>
+<li><em>批处理</em> $\rightarrow$ 增加了内存等待延迟，且在应用崩溃时存在数据丢失风险。</li>
+<li><em>键拆分（Key Splitting）</em> $\rightarrow$ 降低了写入压力的同时放大了读取开销与存储开销。</li>
+</ul>
+</li>
+</ol>
+</article></main></body></html>

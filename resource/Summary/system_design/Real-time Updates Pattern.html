@@ -1,0 +1,282 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Real-time Updates · Summary</title><link rel="stylesheet" href="../../../Study%20topics/style.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script><style>article{background:#fff;border:1px solid #dce4ea;border-radius:12px;padding:8px 24px 20px}article h1{font-size:26px}article table{margin:10px 0}article li{margin:4px 0}@media(max-width:600px){article{padding:4px 14px 14px}}</style></head><body><main><p class="muted">System Design · Patterns · <a href="../../../Reports/AI_ENGINEER_TRANSITION_PLAN.html#day-21">Day 21 读</a> · <a href="https://www.hellointerview.com/learn/system-design/patterns/realtime-updates">网页</a> · <a href="../../Hello_Interview_System_Design/HTML/040%20Real-time%20Updates%20Pattern%20for%20System%20Design%20Interviews%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a> · <a href="obsidian://open?vault=JuJu_Workspace&amp;file=02_Knowledge%2FProgramming%2Fsystem_design%2FReal-time%20Updates%20Pattern">在 Obsidian 里打开</a></p><article><h1>Real-time Updates Pattern</h1>
+<h2>2026-11-16 · Real-time Updates Pattern</h2>
+<p>来源：<a href="../../Hello_Interview_System_Design/HTML/040%20Real-time%20Updates%20Pattern%20for%20System%20Design%20Interviews%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a></p>
+<p>NotebookLM 报告：<a href="https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f">https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f</a></p>
+<h1>系统设计面试中的实时更新模式简报</h1>
+<h2>执行摘要 (Executive Summary)</h2>
+<p>在现代系统设计中，实现系统状态或数据的实时更新是构建聊天应用、实时协作文档（如 Google Docs）、直播评论以及实时仪表盘等功能的核心要求。处理实时更新涉及两个核心环节（Two Hops）：</p>
+<ol>
+<li><strong>客户端与服务器之间的连接机制（第一跳）</strong>：如何将更新从服务端高效交付至客户端。</li>
+<li><strong>服务端与数据/事件源之间的传播机制（第二跳）</strong>：如何在服务端捕获事件并将其准确推送到维护客户端连接的特定节点。</li>
+</ol>
+<p>本简报基于系统设计面试的实践视角，全面解析这两个环节的技术选型、网络基础（OSI模型与负载均衡）、各协议优缺点及架构权衡。核心结论指出：在面试中应遵循**“从简原则”**。若系统无极低延迟需求，简单轮询（Simple Polling）是最稳妥的基准方案；若需要单向实时流，应优先选择服务端发送事件（SSE）；只有在需要高频双向通信时才引入 WebSocket；涉及点对点音视频时使用 WebRTC。服务端传播机制则首选发布/订阅（Pub/Sub）模式以保持端点无状态化，仅在连接需维持大量复杂本地状态时使用一致性哈希（Consistent Hashing）。</p>
+<hr>
+<h2>核心主题详细分析 (Detailed Analysis of Key Themes)</h2>
+<h3>主题一：网络基础与负载均衡（Networking 101 &amp; Load Balancing）</h3>
+<p>理解实时更新的底层逻辑依赖于计算机网络分层架构（OSI模型）。面试中重点涉及以下三层：</p>
+<pre><code>[Layer 7 - 应用层] HTTP, WebSockets, SSE, WebRTC, DNS
+       │
+[Layer 4 - 传输层] TCP (面向连接/有序/状态) vs UDP (无连接/不可靠)
+       │
+[Layer 3 - 网络层] IP (路由/寻址/尽力而为交付)
+</code></pre>
+<h4>1. 网络传输层与应用层协议特性</h4>
+<ul>
+<li><strong>网络层 (Layer 3 - IP Protocol)</strong>：负责数据包路由与寻址，仅提供“尽力而为”的交付，不保证数据包不丢失、不重复或按序到达。</li>
+<li><strong>传输层 (Layer 4 - TCP &amp; UDP)</strong>：<ul>
+<li><strong>TCP（传输控制协议）</strong>：面向连接的协议。在传输数据前必须建立连接（三次握手：<code>SYN</code> $\rightarrow$ <code>SYN-ACK</code> $\rightarrow$ <code>ACK</code>），断开时需四次挥手（<code>FIN</code> $\rightarrow$ <code>ACK</code> $\rightarrow$ <code>FIN</code> $\rightarrow$ <code>ACK</code>）。TCP 保证数据准确且按序到达，但维持连接需要消耗双方内存资源与带宽，且建立/拆除连接存在往返时延（RTT）。</li>
+<li><strong>UDP（用户数据报协议）</strong>：无连接协议。直接发送数据而无需提前建立连接，不保证可靠性与顺序。</li>
+</ul>
+</li>
+<li><strong>应用层 (Layer 7)</strong>：构建在 TCP 之上的高级协议（如 HTTP、WebSockets、SSE 等），为 Web 应用提供抽象。</li>
+</ul>
+<h4>2. 负载均衡器的分类与影响</h4>
+<p>负载均衡在多服务器架构中用于分散流量。L4 与 L7 负载均衡器的选型对实时更新架构有决定性影响：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">负载均衡类型</th>
+<th align="left">工作层级</th>
+<th align="left">工作机制与特性</th>
+<th align="left">适用协议与场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>Layer 4 (L4)</strong></td>
+<td align="left">传输层 (TCP/UDP)</td>
+<td align="left">基于 IP 地址和端口进行路由，不检查数据包内容。维护客户端与后端服务器之间的长 TCP 连接。性能极高。</td>
+<td align="left"><strong>WebSocket</strong> 等长连接协议（如同客户端直接与后端建连）。</td>
+</tr>
+<tr>
+<td align="left"><strong>Layer 7 (L7)</strong></td>
+<td align="left">应用层 (HTTP)</td>
+<td align="left">解析 HTTP 报文内容（URL、Header、Cookie 等），终结客户端连接并与后端新建连接。具有极高的路由灵活性（类似于 API 网关）。</td>
+<td align="left"><strong>HTTP 轮询、长轮询</strong>。部分 L7 支持 WebSocket，但原生匹配度不如 L4。</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h3>主题二：第一跳：客户端更新协议深度对比（Hop 1 Protocols）</h3>
+<h4>1. 简单轮询 (Simple Polling)</h4>
+<p>客户端按固定时间间隔（如每 2-5 秒）向服务端发送 HTTP GET 请求获取最新状态。</p>
+<ul>
+<li><strong>优点</strong>：实现极其简单；服务端无状态；无需特殊基础设施；面试中解释成本低。</li>
+<li><strong>缺点</strong>：延迟较高（最大延迟为轮询间隔 + 请求响应时间）；高频轮询浪费带宽与服务器资源；频繁建立/断开连接。</li>
+<li><strong>面试建议</strong>：作为基准方案（Baseline）。若业务对延迟不敏感（或更新窗口极短，如 LeetCode 代码提交状态），应主动向面试官提出此方案以节省时间。可引入 <code>HTTP keep-alive</code>（保持 TCP 连接时间大于轮询间隔）来减少连接开销。</li>
+</ul>
+<h4>2. 长轮询 (Long Polling)</h4>
+<p>客户端发起 HTTP 请求，服务端保持连接打开，直至有新数据可用（或超时）才返回响应。客户端收到响应后立即发起下一个长轮询请求。</p>
+<ul>
+<li><strong>优点</strong>：基于标准 HTTP，适配现有基础设施；服务端无状态；延迟低于简单轮询。适合异步长流程通知（如支付结果返回）。</li>
+<li><strong>缺点</strong>：在高频更新场景下，由于客户端每次接收数据后必须“重新建连”，会导致额外的延迟积压（例如 10ms 内发生 2 次更新，第二个更新需等待前一个响应完成加新请求建立，延迟可达 290ms 以上）；增加 HTTP 报头开销；浏览器对同一域名的并发连接数有限制；监控较困难（长时间挂起请求）。</li>
+<li><strong>架构注意</strong>：需确保负载均衡器与代理节点的超时时间设置长于长轮询等待时间（常见轮询间隔为 15-30 秒）。</li>
+</ul>
+<h4>3. 服务端发送事件 (Server-Sent Events / SSE)</h4>
+<p>基于 HTTP 的单向流技术。服务端在 HTTP 响应头中使用 <code>Transfer-Encoding: chunked</code> 和 <code>Content-Type: text/event-stream</code>，保持连接打开并以数据块（Chunks）形式不断推送到客户端。</p>
+<ul>
+<li><strong>优点</strong>：现代浏览器原生支持（<code>EventSource</code>）；自动断线重连；基于 HTTP，效率显著高于长轮询；适合服务端向客户端单向推送（如 AI 大模型 Token 逐字流式输出）。</li>
+<li><strong>缺点</strong>：仅支持单向通信（服务端 $\rightarrow$ 客户端）；部分中间代理/负载均衡器不支持流式响应（会试图缓冲响应体导致流阻塞，极难排查）；受限于浏览器同源并发连接数。</li>
+<li><strong>重连机制</strong>：SSE 标准包含 <code>last event ID</code> 机制。连接中断重连时，客户端发送已接收的最后事件 ID，服务端据此补发遗漏数据。</li>
+</ul>
+<h4>4. WebSocket (全双工通信)</h4>
+<p>基于 HTTP 升级协议（<code>Upgrade: websocket</code>）建立的 TCP 全双工通道。建连后，客户端与服务端均可以随时互发二进制或文本消息。</p>
+<ul>
+<li><strong>优点</strong>：真正的全双工通信；消息头开销极小，延迟极低；适合高频读写场景（如实时聊天、多人竞技）。</li>
+<li><strong>缺点</strong>：实现复杂度高；连接为有状态（Stateful），导致负载均衡与弹性伸缩困难；服务器部署/重启时会导致大量长连接瞬间断开重连（连接风暴）。</li>
+<li><strong>参考架构（ WebSocket 服务隔离）</strong>：
+为了防止长连接状态蔓延至整个后端，通常在系统入口处设立独立的 <strong>WebSocket 服务层</strong> 专门负责维持长连接与维护连接映射表，后端的业务服务保持无状态。</li>
+</ul>
+<pre><code>[Client] ──(WebSocket)──&gt; [L4 Load Balancer] ──&gt; [WebSocket Service (Stateful)]
+                                                         │
+                                               (Stateless Internal RPC/Pub-Sub)
+                                                         ▼
+                                               [Backend Business Services]
+</code></pre>
+<h4>5. WebRTC (点对点通信)</h4>
+<p>旨在建立浏览器之间的直接 P2P（Peer-to-Peer）连接，主要用于音视频通话、屏幕共享及特定数据传输。</p>
+<ul>
+<li><strong>核心组件</strong>：<ul>
+<li><strong>信令服务器 (Signaling Server)</strong>：协助节点互相发现并交换连接信息（ICE Candidate），通常基于 WebSocket 或 SSE 实现。</li>
+<li><strong>STUN 服务器</strong>：用于 NAT 穿越（Session Traversal Utilities for NAT），帮助节点获取自己的公网 IP 和端口（穿孔 Hole Punching）。</li>
+<li><strong>TURN 服务器</strong>：当防火墙或对称型 NAT 阻止 P2P 直连时，作为中继节点转发所有流量。</li>
+</ul>
+</li>
+<li><strong>适用场景</strong>：实时音视频会议、游戏、或为了极度降低服务端带宽成本的 P2P 协作（如 Canva 共享画板指针、结合 CRDT 的 Google Docs 协同编辑）。</li>
+</ul>
+<hr>
+<h3>主题三：第二跳：服务端推送/拉取架构模式（Hop 2 Architecture）</h3>
+<p>当事件从数据源产生后，服务端如何找到持有对应客户端连接的服务器并完成推送？存在三种主流模式：</p>
+<pre><code>                              ┌──&gt; 模式 A: 轮询拉取 (Pulling via DB)
+                              │
+[事件产生源 (Source)] ───────┼──&gt; 模式 B: 一致性哈希推送 (Pushing via Consistent Hash)
+                              │
+                              └──&gt; 模式 C: 发布/订阅推送 (Pushing via Pub/Sub)
+</code></pre>
+<h4>1. 轮询拉取 (Pulling with Simple Polling)</h4>
+<ul>
+<li><strong>机制</strong>：数据源将更新写入数据库（带有时间戳）。客户端通过轮询向服务器查询大于上次接收时间戳的数据。</li>
+<li><strong>权衡</strong>：解耦了生产者与消费者，极易实现；但丢失了实时性。在高并发下数据库读压力巨大（例如 100 万客户端每 10 秒轮询一次，产生 10 万 QPS/TPS 的数据库读流量）。</li>
+</ul>
+<h4>2. 基于一致性哈希的推送 (Pushing via Consistent Hashes)</h4>
+<p>当客户端建立 WebSocket/SSE 等有状态长连接时，必须解决“消息应该发送到哪台服务器”的问题。</p>
+<ul>
+<li><strong>取模哈希的缺陷</strong>：使用简单的取模公式 $Server = User\_ID \pmod N$。当节点数 $N$ 发生扩缩容变化时，绝大多数用户的映射失效，引发全网连接断开与重连。</li>
+<li><strong>一致性哈希环 (Consistent Hash Ring)</strong>：将服务器节点与用户映射到同一个哈希环上。用户连接顺时针方向遇到的第一台服务器。增删节点仅影响环上相邻段的用户连接。</li>
+<li><strong>适用场景</strong>：连接本身需要维护大量复杂本地状态的场景（例如 Google Docs 中每个文档需在对应服务器维护复杂的协同编辑状态）。</li>
+<li><strong>扩缩容处理流程（面试高频深度考点）</strong>：<ol>
+<li>协调服务（如 Zookeeper/etcd）记录新旧服务器分配表。</li>
+<li>逐步断开受影响段的客户端连接，引导其重连至新服务器。</li>
+<li>在过渡期间，将消息同时双投（Dual-push）至新旧两台服务器，直至迁移完成。</li>
+</ol>
+</li>
+</ul>
+<h4>3. 基于发布/订阅的推送 (Pushing via Pub/Sub)</h4>
+<ul>
+<li><strong>机制</strong>：使用 Redis 或 Kafka 作为中间件。客户端可随机连接至任意轻量级端点服务器（Endpoint Server）。端点服务器在 Pub/Sub 中订阅该客户端对应的 Topic（如 <code>user_id</code> 或 <code>room_id</code>）。当新消息产生时，发布至该 Topic，Pub/Sub 将消息广播至对应的端点服务器，再由其推送给客户端。</li>
+<li><strong>优点</strong>：端点服务器保持无状态，负载均衡极其简单（采用“最少连接数 Least Connections”策略）；扩展性极佳，支持海量广播。</li>
+<li><strong>缺点</strong>：Pub/Sub 无法原生感知客户端断开；Pub/Sub 瓶颈可能成为单点故障；引入额外中继开销（延迟增加 &lt;10ms）。</li>
+<li><strong>Pub/Sub 扩容</strong>：利用 Redis Cluster 对 Topic 进行 Key 分片（Sharding），端点服务器与 Redis 分片集群建立网状连接。</li>
+</ul>
+<hr>
+<h2>关键引言与上下文解析 (Important Quotes &amp; Strategic Context)</h2>
+<p>针对系统设计面试中的关键权衡，源文档提出了多项权威洞察：</p>
+<blockquote>
+<p><strong>1. 关于轮询的选型价值：</strong>
+<em>“A lot of interview questions don&#39;t actually require real-time updates. Think critically about the product... If the crux of your problem is not real-time updates, you&#39;ll want to propose a simple, polling-based approach.”</em>
+<strong>上下文解析</strong>：许多面试题的核心考点并不在“实时传输”，而在数据建模或一致性上。盲目引入 WebSocket 会浪费宝贵的面试时间。主动提出轮询并说明权衡，可以为核心模块保留精力。</p>
+</blockquote>
+<blockquote>
+<p><strong>2. 关于 WebSocket 的过早优化陷阱：</strong>
+<em>“I often find candidates too eagerly adopting Websockets when they could be using SSE or simple polling instead. Because of the additional complexity and infra lift, you&#39;ll want to defer to SSE unless you have a specific need for this bi-directional communication.”</em>
+<strong>上下文解析</strong>：面试官常考查候选人对“技术复杂性成本”的认知。WebSocket 引入了复杂的有状态架构与部署运维成本。若业务仅需要单向流（如 AI 文本生成、新闻推送），SSE 是更优且更具说服力的架构选型。</p>
+</blockquote>
+<blockquote>
+<p><strong>3. 关于长连接的有状态隔离：</strong>
+<em>“Because of all the issues associated with stateful connections, many architectures will terminate WebSockets into a WebSocket service early in their infrastructure.”</em>
+<strong>上下文解析</strong>：高级/Staff 级别工程师需要具备“控制状态扩散（Minimizing the spread of state）”的设计理念。将 WebSocket 在边缘独立服务中终结，可保持内部核心业务逻辑服务的完全无状态化与快速迭代部署。</p>
+</blockquote>
+<blockquote>
+<p><strong>4. 关于简单轮询的潜在隐患：</strong>
+<em>“If you have a million clients polling every 10 seconds, you&#39;ve got 100k TPS of read volume! This is easy to forget about.”</em>
+<strong>上下文解析</strong>：在评估轮询方案时，必须进行数量级估算（Back-of-the-envelope calculation）。简单的轮询乘上庞大的客户端基数，会对数据库造成毁灭性的读吞吐压力。</p>
+</blockquote>
+<hr>
+<h2>可操作的洞察与决策指南 (Actionable Insights &amp; Decision Matrices)</h2>
+<h3>1. 第一跳：客户端技术选型决策树</h3>
+<pre><code>需要实时更新吗？
+├── 否 / 延迟不敏感 ───────────────&gt; [简单轮询 Simple Polling]
+└── 是
+    ├── 仅需服务端单向推送？ ──────&gt; [服务端发送事件 SSE] (例: AI Token流, 实时仪表盘)
+    └── 需要高频双向通信？
+        ├── 节点间点对点音视频/数据？ ─&gt; [WebRTC] (例: 视频会议)
+        └── 客户端-服务端高频交互 ──&gt; [WebSocket] (例: 实时聊天, 多人竞技)
+</code></pre>
+<h4>客户端协议综合对比表</h4>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">维度</th>
+<th align="left">简单轮询 (Polling)</th>
+<th align="left">长轮询 (Long Polling)</th>
+<th align="left">服务端发送事件 (SSE)</th>
+<th align="left">WebSocket</th>
+<th align="left">WebRTC</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>通信方向</strong></td>
+<td align="left">双向（基于多次 HTTP）</td>
+<td align="left">双向（基于多次 HTTP）</td>
+<td align="left">单向（服务端 $\rightarrow$ 客户端）</td>
+<td align="left">全双工 (Bi-directional)</td>
+<td align="left">双向 P2P</td>
+</tr>
+<tr>
+<td align="left"><strong>底层协议</strong></td>
+<td align="left">Standard HTTP</td>
+<td align="left">Standard HTTP</td>
+<td align="left">HTTP (<code>chunked</code>)</td>
+<td align="left">TCP (HTTP Upgrade)</td>
+<td align="left">UDP/TCP (P2P)</td>
+</tr>
+<tr>
+<td align="left"><strong>延迟表现</strong></td>
+<td align="left">高 (受限于轮询间隔)</td>
+<td align="left">中等 (取决于请求重建速率)</td>
+<td align="left">低</td>
+<td align="left">极低</td>
+<td align="left">极低 (点对点)</td>
+</tr>
+<tr>
+<td align="left"><strong>服务端状态</strong></td>
+<td align="left">无状态</td>
+<td align="left">无状态</td>
+<td align="left">有状态 (保持连接)</td>
+<td align="left">有状态 (保持 connection)</td>
+<td align="left">轻量信令状态</td>
+</tr>
+<tr>
+<td align="left"><strong>基础设施要求</strong></td>
+<td align="left">无额外要求</td>
+<td align="left">须调整代理/LB超时设置</td>
+<td align="left">部分代理需要禁用响应缓冲</td>
+<td align="left">需要支持长连接/L4 LB</td>
+<td align="left">需要 STUN/TURN/信令服务器</td>
+</tr>
+<tr>
+<td align="left"><strong>典型应用</strong></td>
+<td align="left">异步任务结果查询</td>
+<td align="left">支付状态确认</td>
+<td align="left">AI 文本流、新闻广播</td>
+<td align="left">聊天应用、协同剪辑</td>
+<td align="left">音视频通话、P2P 传输</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h3>2. 第二跳：服务端事件传播模式对比表</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">模式</th>
+<th align="left">工作原理</th>
+<th align="left">优点</th>
+<th align="left">缺点</th>
+<th align="left">适用场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>轮询拉取 (DB-based)</strong></td>
+<td align="left">客户端直接查库拉取增量数据</td>
+<td align="left">架构极简，彻底解耦生产者与消费者</td>
+<td align="left">数据库读 TPS 极高，存在明显延迟</td>
+<td align="left">对实时性要求不高的系统</td>
+</tr>
+<tr>
+<td align="left"><strong>一致性哈希 (Consistent Hash)</strong></td>
+<td align="left">通过哈希环固定客户端与服务器绑定关系</td>
+<td align="left">极适合单节点维护大体积本地状态的场景</td>
+<td align="left">扩缩容需要复杂的重路由与状态迁移逻辑</td>
+<td align="left">强状态应用（如 Google Docs 协同编辑）</td>
+</tr>
+<tr>
+<td align="left"><strong>发布/订阅 (Pub/Sub)</strong></td>
+<td align="left">端点服务器订阅 Redis/Kafka Topic</td>
+<td align="left">端点服务器完全无状态，负载均衡极易扩展</td>
+<td align="left">Pub/Sub 单点/集群瓶颈，无法感知断线</td>
+<td align="left">通用实时推送场景（如聊天、通知）</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h3>3. 系统设计面试实战策略</h3>
+<ol>
+<li><p><strong>主动澄清与防御性提问</strong>：
+在听到“实时”字眼时，首先向面试官确认：“系统是否必须达到毫秒级实时？如果是几秒延迟的更新，我们是否可以使用带有 <code>Keep-Alive</code> 的简单轮询，以便将设计重点放在核心业务数据建模上？”</p>
+</li>
+<li><p><strong>长连接的有状态与伸缩性应对（针对 Senior/Staff 候选人）</strong>：</p>
+<ul>
+<li><strong>断线重连机制</strong>：说明客户端如何使用指数退避（Exponential Backoff）重连，并通过 <code>last_event_id</code> 或时间戳补发离线期间错过的消息。</li>
+<li><strong>服务器重启/部署策略</strong>：提出隔离 WebSocket 服务的方案，减少部署频率；部署时采用优雅停机（Graceful Shutdown），分批次断开连接，避免触发“重连风暴（Reconnection Storm）”。</li>
+<li><strong>负载均衡策略</strong>：对 WebSocket 或 Pub/Sub 端点服务器，明确指定采用 <strong>最少连接数（Least Connections）</strong> 算法，而非轮询（Round Robin），以防止有状态长连接分布不均造成节点热点故障。</li>
+</ul>
+</li>
+</ol>
+</article></main></body></html>

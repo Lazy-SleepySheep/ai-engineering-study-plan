@@ -20,11 +20,11 @@
 
 | 题库 | 数量 | 安排 |
 |---|---|---|
-| LeetCode | 171 题 | Top Interview 150 共 150 题（Hard 在 Day 35 之后）加计划原有 21 题。每天 08:30–10:30。[Top 150 排期](Reports/AI_ENGINEER_TOP150_SCHEDULE.md) · [每日刷题表](Reports/AI_ENGINEER_LEETCODE_DAILY_LIST.md) |
+| LeetCode | 171 题 | Top Interview 150 共 150 题（Hard 在 Day 35 之后）加计划原有 21 题。每天 08:30–11:15 的 Data Structure & Algo 里做，先做当天 pattern 的题，其他题和复习放在后面。[Top 150 排期](Reports/AI_ENGINEER_TOP150_SCHEDULE.md) · [每日刷题表](Reports/AI_ENGINEER_LEETCODE_DAILY_LIST.md) |
 | SQL | 34 题 | 周二、周四前 1 小时，每天 3 题先做前两题；部分题重复复习，共 54 道次 |
-| LeetCode Pattern | 41 个 | 每天 10:30–11:15，从 Day 04 开始：常见 15 种（DP 算 3 个，共 17 个）一天一个，其余 Core 和 Advanced 一天一个，偏门的两个一天；Day 42–45 混合识别。每个 pattern 读完再做两道练习题。[Pattern 总表](Reports/AI_ENGINEER_TOP150_RECORD.html#pattern) |
+| LeetCode Pattern | 41 个 | 每天 Data Structure & Algo 一开始学（读讲义 15 分钟），从 Day 04 开始，基本一天一个，顺序跟着早上的 Study topic 走；早上的 Top 150 题排在它的 pattern 当天或之后，不会先做题后学 pattern。Top K 和 K-way Merge 一天，偏门的两个一天；Day 42–45 混合识别。每个 pattern 读完再做两道练习题。[Pattern 总表](Reports/AI_ENGINEER_TOP150_RECORD.html#pattern) |
 | 面试原题 | 623 题 | 每天 16:45–17:45，9–20 题，题下有英文答案、详解和追问 |
-| Hello Interview | 42 天 | 每天 13:45–15:45，2 小时：Day 04–05 热身；Day 06–35 是 30 天计划（System Design 12 次、AI Coding 10 题、基础与复盘 8 天）；Day 36–45 新题和重做弱项。[记录](Reports/AI_ENGINEER_TOP150_RECORD.html#hellointerview) |
+| Hello Interview | 42 天 | 每天 13:45–15:45，2 小时，Day 04–45：题库里的 System Design 32 道和 AI Coding 13 道全部排进来，其中 6 天是两道 System Design 一天；Day 04、Day 35、Day 42 不做题库的题（答题框架、查漏、重做）。Hello Interview 的讲义 33 篇（System Design 的 Core Concepts、Patterns、Key Technologies，AI Coding 的 Common Patterns）排在第一道用到它的题那天或之前，当天先读讲义再做题。[按天记录](Reports/AI_ENGINEER_TOP150_RECORD.html#hellointerview) · [System Design 题](Reports/AI_ENGINEER_TOP150_RECORD.html#systemdesign) · [AI Coding 题](Reports/AI_ENGINEER_TOP150_RECORD.html#aicoding) |
 | System Design 讲义 | 20 个主题 | 不排进时间表，需要时在 [Topic Library](Study%20topics/index.html) 里找 |
 | ML Notebook | 15 个 | 不排进时间表，需要时在 [Topic Library](Study%20topics/index.html) 里找 |
 | Topic 讲义 | 252 页 | 时间表里有链接，也可在 [Topic Library](Study%20topics/index.html) 搜索 |
@@ -33,8 +33,8 @@
 
 - LeetCode Pattern - 先读 pattern 页的 Recognize it when 和模板，再做两道练习题，做题前先说出 cue 和 pattern；学完在时间表或 [刷题记录的 Pattern tab](Reports/AI_ENGINEER_TOP150_RECORD.html#pattern) 里打勾
 - Notebook - 不再每天排；Day 31–38 项目前要看 Volatility Forecasting notebook，先按 [Notebook setup](notebook/README.md) 选好 Python kernel
-- Hello Interview - System Design：读题和 Requirements 10 分钟、独立模拟 45 分钟、对照参考设计 20 分钟、复盘 15 分钟，剩下的补图或重讲 Deep Dive；AI Coding：每次只给 AI 一个能验证的子任务，先检查再继续。每天记下卡在哪里、AI 帮了什么、哪里出了错
-- 一天的顺序 - 08:30 刷题，10:30 LeetCode Pattern，11:15 网课，13:15 午饭，13:45 Hello Interview，15:45 项目，16:45 Interview Questions，17:45 复盘
+- Hello Interview - Material 下面是当天要先读的讲义（每篇一行，标题后面是分钟数，比如 Handling Large Blobs (20mins)），先读讲义再做题；Review 下面是以前读过、今天的题也用到的讲义，做题前翻一下。System Design：读题和 Requirements 10 分钟、独立模拟 45 分钟、对照参考设计 20 分钟、复盘 15 分钟，剩下的补图或重讲 Deep Dive；AI Coding：每次只给 AI 一个能验证的子任务，先检查再继续。每天记下卡在哪里、AI 帮了什么、哪里出了错
+- 一天的顺序 - 08:30 Data Structure & Algo（先读当天的 pattern，再做这个 pattern 的题，最后是其他题、SQL 和复习），11:15 网课，13:15 午饭，13:45 Hello Interview，15:45 项目，16:45 Interview Questions，17:45 复盘
 
 ## 项目
 

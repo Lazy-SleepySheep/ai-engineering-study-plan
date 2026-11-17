@@ -16,7 +16,7 @@
 - 打开学习计划页面(勾选能保存) - 双击 `start-server.bat`,或者在 VS Code 里打开这个文件夹让它自动启动,然后打开 http://127.0.0.1:5510/Reports/AI_ENGINEER_TRANSITION_PLAN.html
 - 用 Chrome 书签直接打开时间表(重启电脑后也能用,不开机自启) - 每台电脑先双击一次 `open-study-plan.bat`,然后把书签网址设成 `studyplan://plan`(另有 `studyplan://guide`、`studyplan://leetcode`)。点书签时 Chrome 会问是否打开,点"打开";服务器没在运行就自动在后台启动,再打开页面。移动仓库位置后再双击一次;`open-study-plan.bat remove` 取消
 - 写每天的学习笔记 - 时间表里每天标题下有两个链接:"✎ 学习记录"是写的地方,每一项下面的框里写,自动保存,点"生成今日学习笔记"写进 `Study notes/` 里当天的 `.md`;"📖 今日学习笔记"显示生成好的笔记。见 [Study notes/README.md](Study%20notes/README.md)
-- 随手记临时想法 - 任意页面顶部导航点"随想笔记",File name 填新名字或选已有的笔记,写完点 Update,新建一篇或者加到那篇的最后,存在 `Study notes/thoughts/`
+- 随手记临时想法 - 任意页面顶部导航点"随想笔记",File name 填新名字或选已有的笔记,写完点 Update,新建一篇或者加到那篇的最后,存在 `Study notes/thoughts/`;框里可以 Ctrl+V 粘贴截图,或者把图片拖进来
 - 把进度和学习笔记同步到另一台设备 - 这台点"推送到 GitHub";另一台设备运行 `start-server.bat`,打开页面点"从 GitHub 拉取"。建议开始学习时先点一次"从 GitHub 拉取",结束时点一次"推送到 GitHub"
 - 每日学习 - 直接打开 `AI_ENGINEER_DAILY_LEARNING_GUIDE.html`,不需要命令
 - 记录碎片时间看到的面试题 - 在 `micro-learning/questions.md` 里加一行 `- [ ] 题目`,答案每天自动生成到 `micro-learning/answers/`
@@ -47,31 +47,30 @@
 先分清最常用的两份:学习指南是总览入口,每日时间表是每天要做的事。
 
 - `AI_ENGINEER_DAILY_LEARNING_GUIDE` - 学习指南,总览和入口,只有 6 节:每日入口(按周分组,每周一行,点开日期跳到每日时间表里当天的位置)、题库一览(一张表,每个题库一行:LeetCode、SQL、LeetCode Pattern、面试原题等各有多少)、使用方法、项目、Topic 总览、计划说明。想知道今天做什么,先开这份找到当天,点进去
-- `AI_ENGINEER_TRANSITION_PLAN` - 每日时间表,纯每日内容(约 19,500 行,是最大的一份)。每一天是一张 7 行的表(没有午休行):08:30–10:30 刷题(每道题一行)、10:30 LeetCode Pattern、11:15 Online Course、13:45 Hello Interview、15:45 项目、16:45 面试题、17:45 复盘。10:30 那一行是当天的 LeetCode pattern:pattern 页面链接(读 Recognize it when、原理和模板)加两道练习题,各标着分钟数,都带勾选框;Day 01–03 这一格跳过,偏门的 pattern 两个一天,Day 42–45 是不标 pattern 的混合识别题。13:45 那一行是 Hello Interview(System Design 和 AI Coding,2 小时):当天的题目和任务、Hello Interview 的题解和练习链接,一个勾选框;Day 04–05 热身,Day 06–35 是 30 天计划,Day 36–45 做新题和重做弱项,Day 01–03 原来是 General & AI System Design。表格下面是"今日申请工作"(当天申请的岗位数量,下面是岗位名称、公司、Eval 链接和 Local JD 链接,数据由本地服务器实时读自你的 career-ops 仓库,不会写进这个仓库)、学习提示、当天 20 道左右面试原题,每题附英文 Interview Answer、Explanation 和 Follow-up。HTML 版先展开口述稿,再按需展开详解和参考代码
+- `AI_ENGINEER_TRANSITION_PLAN` - 每日时间表,纯每日内容(约 19,500 行,是最大的一份)。每一天是一张 6 行的表(没有午休行):08:30 Data Structure & Algo、11:15 Online Course、13:45 Hello Interview、15:45 项目、16:45 面试题、17:45 复盘。08:30–11:15 的 Data Structure & Algo(2 小时 45 分钟)把刷题和 LeetCode pattern 放在一格里,分两栏,左栏是每一组的标题,右栏是这一组的题:最上面是当天 pattern 的页面链接和时间,比如"#29 Prefix Sum(65mins):"(读讲义 15 分钟、两道练习题 30 分钟,加上早上排的同 pattern 的题),右边是这个 pattern 的题(原来的两道识别练习题和早上排的同 pattern 的题,从易到难);SQL 日接着是"SQL 60 mins:";然后"其他题 N mins:"是不属于今天 pattern 的题,最后"复习 N mins:"。每道题一行,都带勾选框。原来早上第一行的 Study topic 和"资料:"链接已经去掉。Day 01–03 没有 pattern,只有"刷题";偏门的 pattern 两个一天,Top K 和 K-way Merge 一天;Day 42–45 是不标 pattern 的混合识别题。从 Day 06 起 pattern 的顺序跟着早上的题走,每道 Top 150 题排在它所属 pattern 的那天或之后(比如 Day 06 学 Merge Intervals,相关题是 4 道 intervals 和 2 道练习题);Day 31 以后学的是题库里没有对应题的 pattern,那几天的题大多在"其他题"里,是前面学过的 pattern 的剩余题和 Hard 题。13:45 那一行是 Hello Interview(System Design 和 AI Coding,2 小时):也分两栏:左栏"Material"的右边是当天要先读的 Hello Interview 讲义,每篇一行、一个勾选框,写成"Handling Large Blobs (20mins)(本地连接 · Summary)"(System Design 的 Core Concepts、Patterns、Key Technologies 和 AI Coding 的 Common Patterns 共 33 篇,每篇读一次,排在第一道用到它的题那天或之前;标题链到网站,本地连接打开 `resource/` 里下载的网页,Summary 打开从 Obsidian 库 JuJu_Workspace 的笔记生成的 HTML 页面(`resource/Summary/`));左栏"Review"的右边是今天的题也用到、之前已经读过的讲义,后面写着哪天读的;然后是当天的题目(加粗,一个勾选框,后面写着读完讲义剩下的时间,比如"System Design:Design Dropbox (80mins)")和任务,最后一行在"［ ］"里放"讲义:"、"题解:"、"练习题:"的链接(没有的那类不写,题解也有本地连接);Hello Interview 题库里的 System Design 32 道和 AI Coding 13 道全部排在 Day 04–45,每道一次;System Design 基本一天一道,有 6 天是两道考点相近的题一天(各 1 小时);Day 04 是答题框架,Day 35 是 AI Coding 流程查漏,Day 42 重做最弱的 Coding;Day 01–03 原来是 General & AI System Design。表格下面是"今日申请工作"(当天申请的岗位数量,下面是岗位名称、公司、Eval 链接和 Local JD 链接,数据由本地服务器实时读自你的 career-ops 仓库,不会写进这个仓库)、学习提示、当天 20 道左右面试原题,每题附英文 Interview Answer、Explanation 和 Follow-up。HTML 版先展开口述稿,再按需展开详解和参考代码
   - 勾选框 - 每道刷题、pattern、练习题、设计、项目、面试题、复盘后面都有一个勾选框,做完点一下。网课那一行有输入框,可以写课程名
   - 进度保存 - 在本地服务器上打开页面时,勾选会写进 `study-progress.json`(进度的唯一来源),同时把时间表 Markdown 里对应的 ☐ 改成 ☑。页面顶部有两个按钮,点了才会动 GitHub,打勾本身不会:"从 GitHub 拉取"只拉取别的设备的进度,不推送;"推送到 GitHub"先拉取再推送。两个按钮只处理 `study-progress.json`、时间表 Markdown 和 `Study notes/` 里的笔记(`drafts.json`、生成的 `.md`、视频和随想笔记)。只有 HTML 版有勾选框,方向是 HTML 到 Markdown,直接改 Markdown 里的 ☐ 不会反过来更新进度
   - 一定要用 `http://127.0.0.1:5510/...` 打开,不要用 5500:5500 是 VS Code 的 Live Server,只能显示页面,不能保存。没连上服务器时,勾选只存在这个浏览器里
 - `AI_ENGINEER_PROJECT_ROADMAP` - 三项目实践路线,每天 15:45-16:45 的项目时段(1 小时):Day 01-20 Risk Copilot(20 小时),Day 21-30 Financial Statement Analytics Assistant(10 小时),Day 31-38 Investment Research Workbench(8 小时),Day 39-40 复现与收尾。每天的任务和原来一样,做不完的放到缓冲周。这是未来的计划,不是项目已完成的报告
 - `AI_ENGINEER_TOP150_SCHEDULE` - LeetCode Top Interview 150 的完整排期(`Reports/` 里,只有 `.md`)。列出 150 题分在哪一天、每个专题的进度,以及计划里不在 Top 150 的 21 道题。详见下面的"刷题安排"
-- `AI_ENGINEER_TOP150_RECORD` - 刷题记录(`Reports/` 里,只有 `.html`,每个页面顶部导航"项目路线"后面都有链接)。上面有 LeetCode、Pattern 和 Hello Interview 三个选项卡(`#pattern`、`#hellointerview` 直接打开)。Hello Interview 每周一列,在时间表 13:45 那一格勾过的那天变绿,上面按 System Design、AI Coding、基础与复盘分别计数。LeetCode 是 Top Interview 150,按 LeetCode 的 23 个专题分列,显示已刷多少、还剩多少,在时间表里勾过一次(当天、复习日或重复排的那天)的题变绿色带 ✓。Pattern 是 [grokking-coding-interview](https://github.com/design-gurus/grokking-coding-interview) 的 41 个 pattern,按学习顺序分四个阶段列成一张表:最上面是这个 repo 最值得看的 4 个链接,每行是 pattern(冻结在最左边,前面有勾)、对应的 LeetCode 题、中文说明、Recognize it when、Typical cost、哪天学和早上哪几天刷到这个 pattern 的题;列宽可以拖,表格可以左右滑。这里的勾和时间表当天 10:30 那一格是同一个勾。连着本地服务器时读最新的勾选,切回页面会自动刷新
+- `AI_ENGINEER_TOP150_RECORD` - 刷题记录(`Reports/` 里,只有 `.html`,每个页面顶部导航"项目路线"后面都有链接)。上面有 LeetCode、Pattern、Hello Interview、System Design 和 AI Coding 五个选项卡(`#pattern`、`#hellointerview`、`#systemdesign`、`#aicoding` 直接打开)。System Design 和 AI Coding 是 Hello Interview 题库里的全部练习题(System Design 32 道、AI Coding 13 道,按 Easy、Medium、Hard 分列),练过哪道就在表里直接打勾,会记下打勾那天的日期;题名链接是题解,"练习"是 Hello Interview 的练习页,D05 这样的标签是时间表里计划做这道题的那天(那天 13:45 勾过就变绿,虚线的是只拿它的题解作参考),上面还数着已安排和没安排的各练了几道。这里的勾和时间表 13:45 那一格是分开的。Hello Interview 每周一列,在时间表 13:45 那一格勾过的那天变绿,上面按 System Design、AI Coding、基础与复盘分别计数。LeetCode 是 Top Interview 150,按 LeetCode 的 23 个专题分列,显示已刷多少、还剩多少,在时间表里勾过一次(当天、复习日或重复排的那天)的题变绿色带 ✓。Pattern 是 [grokking-coding-interview](https://github.com/design-gurus/grokking-coding-interview) 的 41 个 pattern,按学习顺序分四个阶段列成一张表:最上面是这个 repo 最值得看的 4 个链接,每行是 pattern(冻结在最左边,前面有勾)、对应的 LeetCode 题、中文说明、Recognize it when、Typical cost 和备注(名字后面的 (D04) 是哪天学;备注和学习记录里这个 pattern 的框是同一段,写在哪边都行;名字下面的 </> code template 点开是一个代码框,写这个 pattern 的代码模板,存在 `Study notes/pattern-templates.json`);列宽可以拖,表格可以左右滑。这里的勾和时间表当天 Data Structure & Algo 那一格的"读讲义"是同一个勾。连着本地服务器时读最新的勾选,切回页面会自动刷新
 - `AI_ENGINEER_VIDEOS` - 视频链接(`Reports/` 里,只有 `.html`,顶部导航"刷题记录"后面)。粘贴 YouTube、小红书、B站等视频链接点 Save,自动读出标题、作者和时长,存进 `Study notes/videos.json`,跟着"推送到 GitHub"同步;YouTube 视频可以生成带时间的中文总结(用这台电脑上 Claude Code 的登录,存在 `Study notes/video-summaries/`);点作者名字在那一行下面展开对这个作者的备注,写完保存(存在 `Study notes/authors.json`),不点不展开,有备注的作者 ✎ 是主题色;网页版只能看
-- `AI_ENGINEER_THOUGHTS` - 随想笔记(`Reports/` 里,只有 `.html`,顶部导航"视频链接"后面)。File name 输入新名字或从下拉里选已有的笔记,下面的框写临时想法,点 Update(或 Ctrl+Enter)就新建 `Study notes/thoughts/<名字>.md`,或者加到那篇的最后,每条带日期时间。左边列出全部笔记,点一下看全文。跟着"推送到 GitHub"同步;网页版只能看
+- `AI_ENGINEER_THOUGHTS` - 随想笔记(`Reports/` 里,只有 `.html`,顶部导航"视频链接"后面)。File name 输入新名字或从下拉里选已有的笔记,下面的框写临时想法,点 Update(或 Ctrl+Enter)就新建 `Study notes/thoughts/<名字>.md`,或者加到那篇的最后,每条带日期时间。左边列出全部笔记,点一下看全文。框里可以 Ctrl+V 粘贴截图或拖进图片,存在 `Study notes/thoughts/images/`,笔记里显示成图片。跟着"推送到 GitHub"同步;网页版只能看
 - `AI_ENGINEER_BILINGUAL_LESSONS` - 全部讲义的 Markdown 合集(约 8,600 行)。每个主题按 背景、Question、Key Terms、直观例子、英文 Short Answer、中文回答 的顺序写。适合通读或复习,不用一页页点 HTML
 
 每天的时间块是固定的:
 
-1. 08:30-10:30 - Coding(2 小时,Python 题和 Top 150 混合刷)
-2. 10:30-11:15 - LeetCode Pattern(一天一个 pattern 加两道练习题)
+1. 08:30-11:15 - Data Structure & Algo(2 小时 45 分钟:先读当天的 pattern,再做这个 pattern 的题,然后是其他题、SQL 和复习)
 3. 11:15-13:15 - 网课(2 小时)
 4. 13:15-13:45 - 午饭
-5. 13:45-15:45 - Hello Interview(System Design 和 AI Coding,2 小时)
+5. 13:45-15:45 - Hello Interview(System Design 和 AI Coding,2 小时;当天有讲义就先读讲义再做题)
 6. 15:45-16:45 - Project(1 小时)
 7. 16:45-17:45 - 面试原题
 8. 17:45-18:00 - 复盘(15 分钟)
 
 ## 刷题安排
 
-每天 08:30-10:30 刷题,共 2 小时。
+刷题在每天 08:30-11:15 的 Data Structure & Algo 里:前 45 分钟是当天的 pattern(读讲义 15 分钟加两道练习题),其余 2 小时是下面这些题,当天 pattern 的题排在最前面。
 
 - Python 日(周一、周三、周五) - 计划原有的 Python 题和 Top 150 混合刷,每天 4 到 7 题
 - SQL 日(周二、周四) - 前 1 小时做 SQL(三题候选先做前两题),后 1 小时刷 Top 150,每天 2 到 3 题
@@ -179,7 +178,8 @@ uv run python extract_llm.py --all --csv all_jobs_{YYYYMMDD}_dedup.csv
 
 - `coding.cjs`、`sql.cjs`、`ml.cjs`、`design.cjs`、`concepts.cjs` - 各类题目和知识点
 - `lesson-zh.txt`、`concept-zh.txt`、`design-zh.txt` - 讲义的中文内容
-- `hello-interview.json`、`hello-interview.cjs` - Hello Interview 每天的题目、任务、链接和每周目标(Day 06–35 来自 30 天计划),时间表 13:45 那一行和刷题记录的 Hello Interview 选项卡;改了以后运行 `build.cjs`
+- `hello-interview.json`、`hello-interview.cjs` - Hello Interview 每天的题目、任务、链接和每周目标,时间表 13:45 那一行和刷题记录的 Hello Interview 选项卡;改了以后运行 `build.cjs`
+- `hello-interview-problems.json`、`hi-problems.cjs` - Hello Interview 题库的全部练习题和 33 篇讲义(System Design 的 Core Concepts、Patterns、Key Technologies,AI Coding 的 Common Patterns,每道题用到哪几篇;2026-11-16 从网站读取),刷题记录的 System Design 和 AI Coding 选项卡;网站加了新题就加进 json 再运行 `build.cjs`
 - `patterns.json`、`patterns.cjs` - 41 个 LeetCode pattern(英文说明来自 grokking-coding-interview,中文说明、对应的 LeetCode 题、早上每道题属于哪个 pattern)和每天学哪个;改了排期或题目后运行 `build.cjs`
 
 完整流程:
@@ -203,7 +203,7 @@ node study-tools/validate.cjs
 注意:
 
 - 重新生成时,没改过 cell 的 notebook 会保留运行输出;改过的 notebook 需要再跑一次验证
-- 原 623 道题、早上的 LeetCode 链接和 notebook 实验代码保持不变(10:30 的 pattern 练习题是另加的)
+- 原 623 道题、早上的 LeetCode 链接和 notebook 实验代码保持不变(pattern 的练习题是另加的;Data Structure & Algo 那一格里同一天的题按 pattern 重新排了顺序,题目不变)
 - `study-tools/original-plan.md` 和 `study-tools/original-roadmap.md` 是只读快照,不是当前入口
 - 日期和刷题安排由生成脚本决定，改了就重新生成：`study-tools/top150-schedule.json` 是排期数据（Day 1 日期、每天的题），`study-tools/reschedule.cjs` 把它应用到 `original-plan.md` 和 `original-roadmap.md` 的快照上。不要手改生成出来的文件，下次重新生成会丢
 - 学习指南留在仓库根目录，其余报告放在 `Reports/`。生成脚本仍按"全部在根目录"工作，由 `study-tools/layout.cjs` 在运行期间把文件临时放回根目录，退出时再放回 `Reports/` 并修好链接，所以直接运行 `build.cjs`、`bilingual-lessons.cjs` 都是安全的

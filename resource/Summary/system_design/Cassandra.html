@@ -1,0 +1,247 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cassandra · Summary</title><link rel="stylesheet" href="../../../Study%20topics/style.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script><script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script><style>article{background:#fff;border:1px solid #dce4ea;border-radius:12px;padding:8px 24px 20px}article h1{font-size:26px}article table{margin:10px 0}article li{margin:4px 0}@media(max-width:600px){article{padding:4px 14px 14px}}</style></head><body><main><p class="muted">System Design · Key Technologies · <a href="../../../Reports/AI_ENGINEER_TRANSITION_PLAN.html#day-17">Day 17 读</a> · <a href="https://www.hellointerview.com/learn/system-design/deep-dives/cassandra">网页</a> · <a href="../../Hello_Interview_System_Design/HTML/051%20Cassandra%20Deep%20Dive%20for%20System%20Design%20Interviews%20%EF%BD%9C%20Hello%20Interview%20System%20Design%20in%20a%20Hurry.html">本地连接</a> · <a href="obsidian://open?vault=JuJu_Workspace&amp;file=02_Knowledge%2FProgramming%2Fsystem_design%2FCassandra">在 Obsidian 里打开</a></p><article><h1>Cassandra</h1>
+<h2>2026-11-13 · Cassandra</h2>
+<p>来源：<a href="https://www.hellointerview.com/learn/system-design/deep-dives/cassandra">https://www.hellointerview.com/learn/system-design/deep-dives/cassandra</a></p>
+<p>NotebookLM 报告：<a href="https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f">https://notebook.google.com/notebook/7e806b31-c3f7-4dd8-ba6b-fd467d606e2f</a></p>
+<h1>Apache Cassandra 系统设计深度分析与简报</h1>
+<h2>执行摘要（Executive Summary）</h2>
+<p>Apache Cassandra 是一个开源、分布式 NoSQL 数据库，最初由 Facebook 为解决其快速扩展的收件箱搜索功能而开发。Cassandra 采用了<strong>分区宽列存储模型（partitioned wide-column storage model）</strong>，具备最终一致性语义。它结合了 Amazon Dynamo 的分布式架构（如一致性哈希、可调一致性）与 Google Bigtable 的存储模型（如宽列数据模型、LSM 树索引），能够在商品硬件构成的集群中实现水平扩展，处理海量数据存储、高吞吐写入与高效读取。</p>
+<p>在系统设计中，Cassandra 的核心价值在于其<strong>极高的写入吞吐量</strong>和<strong>无单点故障（No Single Point of Failure）的高可用性</strong>。然而，Cassandra 不支持 ACID 事务（仅支持分区内单行的原子性与隔离性写入）与多表 JOIN。因此，使用 Cassandra 必须采用**查询驱动的数据建模（Query-Driven Data Modeling）**方法，即根据应用的具体查询模式与读写需求反向设计表结构与主键（Primary Key）。</p>
+<hr>
+<h2>核心主题深度分析（Detailed Analysis of Key Themes）</h2>
+<h3>1. 数据模型与主键结构（Data Model &amp; Primary Key）</h3>
+<p>Cassandra 的数据组织呈层级化结构，底层存储结构可类比为一个大型的嵌套 JSON。</p>
+<ul>
+<li><strong>Keyspace（键空间）</strong>：Cassandra 的顶层组织单位，类似于关系型数据库（Postgres/MySQL）中的数据库（Database）。Keyspace 负责定义数据副本策略（Replication Strategies）以管理数据冗余与可用性，同时拥有用户自定义类型（UDTs）。</li>
+<li><strong>Table（表）</strong>：存在于 Keyspace 内部，由行（Row）组成，具有明确定义列和主键结构的 Schema。</li>
+<li><strong>Row（行）</strong>：表中的单条记录，由主键唯一标识。</li>
+<li><strong>Column（列）</strong>：实际的数据存储单元，包含名称、类型和对应的值。Cassandra 作为宽列数据库，每行所包含的列可以动态变化（无需为未使用的列填 NULL）。此外，<strong>每个列都带有写操作的时间戳元数据（timestamp metadata）</strong>，在副本间发生写入冲突时，通过**“最后写入者胜”（Last Write Wins, LWW）**规则进行冲突解决。</li>
+</ul>
+<h4>主键（Primary Key）的设计逻辑</h4>
+<p>Cassandra 的 Primary Key 由**分区键（Partition Key）<strong>和</strong>聚类键（Clustering Key）**组合而成：</p>
+<ul>
+<li><strong>分区键（Partition Key）</strong>：决定数据被分配到集群中的哪个节点/分区。可以是单列或复合列。</li>
+<li><strong>聚类键（Clustering Key）</strong>：决定同一个分区内部数据的物理排序顺序（默认或指定升序/降序）。</li>
+</ul>
+<p><strong>CQL 主键定义示例语法表：</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">CQL 语法示例</th>
+<th align="left">分区键（Partition Key）</th>
+<th align="left">聚类键（Clustering Key）</th>
+<th align="left">说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><code>PRIMARY KEY (a)</code></td>
+<td align="left"><code>a</code></td>
+<td align="left">无</td>
+<td align="left">仅包含单列分区键，无物理排序</td>
+</tr>
+<tr>
+<td align="left"><code>PRIMARY KEY ((a), b)</code></td>
+<td align="left"><code>a</code></td>
+<td align="left"><code>b</code></td>
+<td align="left"><code>a</code> 为分区键，<code>b</code> 为聚类键（可在后续指定排序规则）</td>
+</tr>
+<tr>
+<td align="left"><code>PRIMARY KEY ((a, b), c)</code></td>
+<td align="left"><code>a, b</code>（复合分区键）</td>
+<td align="left"><code>c</code></td>
+<td align="left">结合 <code>a</code> 和 <code>b</code> 计算哈希值分配分区，按 <code>c</code> 排序</td>
+</tr>
+<tr>
+<td align="left"><code>PRIMARY KEY ((a), b, c)</code> 或 <code>PRIMARY KEY (a, b, c)</code></td>
+<td align="left"><code>a</code></td>
+<td align="left"><code>b, c</code></td>
+<td align="left"><code>a</code> 为分区键，按 <code>b</code> 然后 <code>c</code> 进行多列组合排序</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h3>2. 分布式架构与节点路由（Distributed Architecture &amp; Routing）</h3>
+<p>Cassandra 通过去中心化的无主（Peer-to-Peer）架构提供极高可用性，所有节点都可以充当客户端请求的<strong>协调者（Coordinator）</strong>。</p>
+<h4>一致性哈希与虚拟节点（Consistent Hashing &amp; Vnodes）</h4>
+<ul>
+<li><strong>一致性哈希环</strong>：Cassandra 将数据哈希映射到一个整数环（Hash Ring）上。数据项根据其 Partition Key 的哈希值落到环上的特定位置，并沿顺时针方向寻找第一个节点进行存储。这种机制避免了传统 <code>hash % num_nodes</code> 取模算法在节点增删时导致的大规模数据重映射。</li>
+<li><strong>虚拟节点（Vnodes）</strong>：为解决物理节点物理性能差异及数据倾斜问题，Cassandra 将哈希环上的 Token 分配给虚拟节点（Vnodes），再将多个 Vnodes 映射到具体的物理节点。这实现了更均匀的数据分布，并允许性能更好的物理机器承载更多 Vnodes。</li>
+</ul>
+<h4>节点间通信：Gossip 协议与向量时钟</h4>
+<ul>
+<li><strong>Gossip 协议</strong>：节点间通过 P2P 的 Gossip 协议定期交换集群拓扑与节点存活状态，消除单点故障。</li>
+<li><strong>种子节点（Seed Nodes）</strong>：为防止集群内部形成孤立的子集群（sub-clusters），Cassandra 指定了种子节点作为 Gossip 通信的保证热点（Hotspots），确保新节点加入或恢复时能准确同步全网状态。</li>
+<li><strong>向量时钟（Vector Clock）</strong>：各节点记录每个已知节点的生成时间戳（Generation，节点启动时产生）与版本号（Version，每秒递增的逻辑时钟）。组合构成的向量时钟允许节点自动忽略通过 Gossip 接收到的旧集群状态信息。</li>
+</ul>
+<h4>副本策略（Replication Strategies）</h4>
+<p>Cassandra 沿着哈希环按顺时针方向选择副本存储节点，且会跳过位于同一物理节点上的 Vnode，防止单点故障。</p>
+<pre><code class="language-sql">-- SimpleStrategy 示例 (3个副本)
+ALTER KEYSPACE hello_interview WITH REPLICATION = { &#39;class&#39; : &#39;SimpleStrategy&#39;, &#39;replication_factor&#39; : 3 };
+
+-- NetworkTopologyStrategy 示例 (机房/机架感知，数据中心1设3副本，数据中心2设2副本)
+ALTER KEYSPACE hello_interview WITH REPLICATION = {&#39;class&#39; : &#39;NetworkTopologyStrategy&#39;, &#39;dc1&#39; : 3, &#39;dc2&#39; : 2};
+</code></pre>
+<ol>
+<li><strong>NetworkTopologyStrategy（推荐生产使用）</strong>：具备数据中心与机架感知（Rack Awareness）能力，能将数据副本跨多数据中心、多机架分布，防止物理灾难引发的数据丢失。</li>
+<li><strong>SimpleStrategy</strong>：仅顺时针选择后续节点存储副本，不具备机房感知能力，仅适用于测试或单数据中心部署。</li>
+</ol>
+<hr>
+<h3>3. 存储引擎原理（LSM 树）</h3>
+<p>Cassandra 放弃了传统关系型数据库常用的 B-Tree 索引，采用了<strong>日志结构合并树（Log-Structured Merge Tree, LSM Tree）</strong>，将随机写转化为顺序写，从而获得极高的写入吞吐量。</p>
+<pre><code>[写请求 (Write)]
+      │
+      ├──────────────────────────────┐
+      ▼                              ▼
+【Commit Log (磁盘顺序追加)】     【Memtable (内存中按 Primary Key 排序)】
+(用于宕机持久化恢复)                     │
+                                     │ (达到阈值或定时触发)
+                                     ▼
+                        【SSTable (磁盘上不可变文件)】
+                                     │
+                                     ▼
+                         【Compaction (合并与清理)】
+</code></pre>
+<h4>写路径（Write Path）细节</h4>
+<ol>
+<li><strong>Commit Log</strong>：写入请求到达后，首先顺序追加到磁盘上的 Commit Log（预写日志 WAL），保障数据持久性。</li>
+<li><strong>Memtable</strong>：数据同步写入内存中的 Memtable（按 Primary Key 排序的数据结构）。</li>
+<li><strong>Flush 至 SSTable</strong>：当 Memtable 达到尺寸阈值或时间周期后，冻结并刷新（Flush）到磁盘，生成<strong>不可变的 SSTable（Sorted String Table）</strong>。</li>
+<li><strong>清除 Commit Log</strong>：Memtable 成功转化为 SSTable 后，与其对应的 Commit Log 日志段被释放。</li>
+</ol>
+<h4>删除与墓碑（Tombstones）</h4>
+<p>Cassandra 中的更新和删除操作本质上都是“追加写”。删除操作不会直接擦除磁盘数据，而是写入一个被称为**墓碑（Tombstone）**的特殊标记记录。</p>
+<h4>读路径（Read Path）与辅助结构</h4>
+<p>由于数据分布在 Memtable 和多个 SSTable 中，读取数据时需要合并最新状态：</p>
+<ol>
+<li>首先检查最新的 <strong>Memtable</strong>。</li>
+<li>若未命中，利用 <strong>布隆过滤器（Bloom Filter）</strong> 快速判断哪些 SSTables <em>可能</em> 包含该 Key（避免无意义的磁盘 I/O）。</li>
+<li>按 SSTable 从新到旧的顺序进行读取，结合内部的 <strong>SSTable Indexing</strong>（存储 Key 到 SSTable 文件字节偏移量的映射）迅速定位物理数据。</li>
+</ol>
+<h4>压缩（Compaction）</h4>
+<p>为防止大量历史 SSTable 导致读取性能下降及磁盘膨胀，Cassandra 在后台定期执行 Compaction。Compaction 将多个旧 SSTable 合并为新的 SSTable，在此过程中保留每行数据的最新状态，并彻底物理删除被标记为 Tombstone 的已废弃数据。</p>
+<hr>
+<h3>4. 可调一致性与容错机制（Tunable Consistency &amp; Fault Tolerance）</h3>
+<h4>可调一致性级别（Tunable Consistency）</h4>
+<p>Cassandra 不支持 ACID 事务，仅保证单分区单行的原子性与隔离性。用户需根据 CAP 理论在一致性与可用性之间做权衡：</p>
+<ul>
+<li><strong>一致性级别控制</strong>：写和读操作可独立指定所需响应的副本节点数量（从 <code>ONE</code> 到 <code>ALL</code>）。</li>
+<li><strong>QUORUM 机制（法定人数）</strong>：当写入与读取的响应副本数满足 $R + W &gt; N$（其中 $QUORUM = \lfloor N/2 \rfloor + 1$）时，能确保读取操作必定能看到最新的写入，因为读写响应节点集合中至少存在一个重合节点。</li>
+<li><strong>最终一致性（Eventual Consistency）</strong>：在绝大多数配置下，Cassandra 以最终一致性为目标，允许在短时间内存在数据不一致，随着时间推移所有副本将收敛。</li>
+</ul>
+<h4>容错处理机制</h4>
+<ul>
+<li><strong>Phi Accrual Failure Detector（Phi 累积故障检测器）</strong>：节点在 Gossip 通信中独立计算其他节点的故障概率。当某节点未响应时，检测器将其判定为“犯人”（Convicted）并停止向其路由请求。为了防止网络抖动引发数据重平衡，被判定的故障节点仍保留在哈希环中，直至管理员显式修改拓扑。</li>
+<li><strong>暗示手递手（Hinted Handoffs）</strong>：当 Coordinator 尝试向已被判定为 Offline 的节点写入数据时，Coordinator 会在本地暂存一份称为 <strong>Hint</strong> 的临时数据。一旦目标节点恢复心跳，Coordinator 将 Hint 重新发送给该节点。Hint 是短期容错手段，若节点长期离线，则需通过读修复（Read Repair）或数据重建来恢复。</li>
+</ul>
+<hr>
+<h3>5. 查询驱动的数据建模与实战案例</h3>
+<p>关系型数据库的数据建模是以<strong>实体-关系（Entity-Relationship）<strong>为核心的规范化设计；而 Cassandra 的建模完全由</strong>应用查询模式（Query-Driven）<strong>决定。由于不支持 JOIN 和跨表聚合，数据往往需要在多张表中进行</strong>反规范化（Denormalization，即数据冗余存储）</strong>。</p>
+<h4>案例一：Discord 实时聊天消息存储</h4>
+<p>Discord 需要支持海量消息写入与高频的倒序读取（查看最新消息）。</p>
+<ul>
+<li><p><strong>初始方案（存在缺陷）</strong>：</p>
+<pre><code class="language-sql">CREATE TABLE messages (
+  channel_id bigint,
+  message_id bigint, -- 使用 Snowflake ID（可按时间排序的 UUID，防止时间戳碰撞）
+  author_id bigint,
+  content text,
+  PRIMARY KEY (channel_id, message_id)
+) WITH CLUSTERING ORDER BY (message_id DESC);
+</code></pre>
+<p><em>问题</em>：<code>channel_id</code> 作为唯一分区键。对于极其活跃的频道，随着时间推移，单分区的数据量将无限增长，导致 Cassandra 大分区（Large Partition）性能急剧恶化。</p>
+</li>
+<li><p><strong>改进方案（引入 Bucket 分桶）</strong>：</p>
+<pre><code class="language-sql">CREATE TABLE messages (
+  channel_id bigint,
+  bucket int, -- 基于固定时间窗口的分桶（例如以 2015-01-01 为起点，每 10 天为一个 bucket）
+  message_id bigint,
+  author_id bigint,
+  content text,
+  PRIMARY KEY ((channel_id, bucket), message_id)
+) WITH CLUSTERING ORDER BY (message_id DESC);
+</code></pre>
+<p><em>收益</em>：结合 <code>(channel_id, bucket)</code> 作为复合分区键，保障每个分区的大小在上限可控范围内（即使最活跃的频道 10 天的数据也能轻松容纳），解决了单分区无限增长的问题。</p>
+</li>
+</ul>
+<h4>案例二：Ticketmaster 门票浏览系统</h4>
+<p>Ticketmaster 的选座 UI 强调高可用浏览，对实时一致性要求较低（购买阶段再由一致性数据库校验）。</p>
+<ul>
+<li><strong>分区优化</strong>：
+原始设计按 <code>PRIMARY KEY (event_id, seat_id)</code> 存储，导致单次查询 10,000+ 座位信息时系统负载过高。通过引入场馆区域 <code>section_id</code>，优化为 <code>PRIMARY KEY ((event_id, section_id), seat_id)</code>，将单个大事件的座位分布到集群的不同节点分区中。</li>
+<li><strong>反规范化汇总表</strong>：
+为支持场馆概览页（显示各区域票数与最低票价），单独创建反规范化汇总表：<pre><code class="language-sql">CREATE TABLE event_sections (
+  event_id bigint,
+  section_id bigint,
+  num_tickets bigint,
+  price_floor bigint,
+  PRIMARY KEY (event_id, section_id)
+);
+</code></pre>
+应用层在数据变更时同时写入两张表，虽然牺牲了强一致性，但消除了实时运行复杂聚合计算的需求。</li>
+</ul>
+<hr>
+<h3>6. 高级特性（Advanced Features）</h3>
+<ol>
+<li><strong>Storage Attached Indexes (SAI)</strong>：新一代全局二级索引，允许对非分区键列进行灵活查询。虽然性能略逊于基于 Partition Key 的原生查询，但极大减少了为低频查询单独建表反规范化的开销。</li>
+<li><strong>物化视图（Materialized Views）</strong>：由 Cassandra 数据库底层自动维护的反规范化视图。当主表更新时，数据库自动同步更新物化视图，降低了应用层同时维护多张表的代码复杂性。</li>
+<li><strong>搜索引擎集成（Search Indexing）</strong>：可通过插件（如 Stratio Lucene Index）将 Cassandra 与 ElasticSearch 或 Apache Solr 集成，支持复杂的全文检索与多维筛选。</li>
+</ol>
+<hr>
+<h2>重要引用与背景分析（Important Quotes &amp; Context）</h2>
+<blockquote>
+<p><strong>1. &quot;Cassandra is a wide-column database so the specified columns can vary per row in a table, making Cassandra more flexible than something like a relational database...&quot;</strong></p>
+<ul>
+<li><strong>背景与含义</strong>：关系型数据库要求每一行必须包含 Schema 中定义的每一列（若无值需存 NULL），在物理存储上造成空间浪费。Cassandra 的宽列模型仅存储实际存在值的列，且列带有时间戳元数据，天然适应稀疏数据与动态 Schema 场景。</li>
+</ul>
+</blockquote>
+<blockquote>
+<p><strong>2. &quot;Discord opted to eliminate the possibility of Cassandra primary key conflicts by assigning messages Snowflake IDs... preferable to created_at because a Snowflake ID collision is impossible...&quot;</strong></p>
+<ul>
+<li><strong>背景与含义</strong>：在分布式系统中，即便毫秒级的时间戳也可能在极高并发下发生碰撞，导致数据通过 &quot;Last Write Wins&quot; 被意外覆盖。Discord 使用 Snowflake ID 作为 Clustering Key，既保留了时间的自增可排序特性，又凭借 UUID 的唯一性规避了主键覆盖风险。</li>
+</ul>
+</blockquote>
+<blockquote>
+<p><strong>3. &quot;In short, modeling data for a relational database is entity-relationship-driven. However, Cassandra doesn&#39;t have a concept of foreign keys / referential integrity, JOINs, etc... data modeling for Cassandra is query-driven.&quot;</strong></p>
+<ul>
+<li><strong>背景与含义</strong>：系统设计面试中最常见的错误是将 RDBMS 的范式化思路套用到 NoSQL。Cassandra 牺牲了灵活的查询能力（无 JOIN、无跨表事务），换取了极高的水平扩展性与写性能。因此，建模的起点必须是 UI/API 的“访问模式（Access Patterns）”。</li>
+</ul>
+</blockquote>
+<hr>
+<h2>可操作的洞察与系统设计策略（Actionable Insights）</h2>
+<h3>数据库选型决策矩阵</h3>
+<p>在系统设计面试中，选择 Cassandra 必须具备充分的合理性支持：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="left">维度</th>
+<th align="left">建议使用 Cassandra 的场景</th>
+<th align="left">应避免使用 Cassandra 的场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><strong>系统偏好</strong></td>
+<td align="left">极度偏向 <strong>高可用性（AP）</strong> 与高扩展性</td>
+<td align="left">极度偏向 <strong>强一致性（CP）</strong> 或需 ACID 事务</td>
+</tr>
+<tr>
+<td align="left"><strong>写入负载</strong></td>
+<td align="left"><strong>高写入吞吐量</strong>（如日志、聊天记录、指标监控、传感器数据）</td>
+<td align="left">低写高读且存在大量随机更新的场景</td>
+</tr>
+<tr>
+<td align="left"><strong>查询模式</strong></td>
+<td align="left">访问模式固定、已知，基于已知 Partition Key 查询</td>
+<td align="left">需要复杂的 <strong>多表 JOIN</strong>、多维动态过滤、Ad-hoc 随机聚合</td>
+</tr>
+<tr>
+<td align="left"><strong>数据 Schema</strong></td>
+<td align="left">动态 Schema、列数较多且稀疏</td>
+<td align="left">高度标准化（Normalized）且实体关系复杂的网状数据</td>
+</tr>
+</tbody></table></div>
+<h3>面试实战落地指南</h3>
+<ol>
+<li><strong>明确主键设计逻辑</strong>：向面试官明确说明 Partition Key 用于负载均衡与数据定位，Clustering Key 用于分区内物理排序。</li>
+<li><strong>主动应对大分区（Large Partition）风险</strong>：若选用的 Partition Key（如 <code>channel_id</code> 或 <code>user_id</code>）可能随着时间无限增长，务必主动引入**时间分桶（Time-bucket，如按 10 天或按月分桶）**或数量分桶以控制分区上限。</li>
+<li><strong>声明反规范化策略</strong>：阐明在 Cassandra 中“一图一表（One table per query）”是标准实践，愿意为了读性能付出存储冗余与应用层双写的代价。</li>
+<li><strong>准确设定一致性级别</strong>：在设计强调数据可靠性的场景（如支付或库存预订）时，显式配置 <code>Write: QUORUM</code> 配合 <code>Read: QUORUM</code>；而在对丢包容忍度高、追求极致吞吐的场景下使用 <code>Write: ONE</code>。</li>
+</ol>
+</article></main></body></html>

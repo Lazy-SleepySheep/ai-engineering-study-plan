@@ -2146,7 +2146,7 @@
       "patterns": [
         9
       ],
-      "helloInterview": "准备方法和 System Design 入门",
+      "helloInterview": "System Design 答题框架",
       "concepts": [
         "prompting-vs-rag-vs-fine-tuning",
         "lora",
@@ -2166,7 +2166,7 @@
       "patterns": [
         1
       ],
-      "helloInterview": "Key Technologies 和 AI Coding 入门",
+      "helloInterview": "Design Bitly",
       "concepts": [
         "embeddings",
         "vector-similarity",
@@ -2187,9 +2187,9 @@
         "two-pointers"
       ],
       "patterns": [
-        3
+        4
       ],
-      "helloInterview": "System Design 答题框架",
+      "helloInterview": "Inventory Packer（Easy）",
       "concepts": [
         "chunking",
         "metadata",
@@ -2205,7 +2205,7 @@
       "patterns": [
         29
       ],
-      "helloInterview": "Design Bitly",
+      "helloInterview": "Design Dropbox",
       "concepts": [
         "keyword-vector-hybrid-search"
       ]
@@ -2218,9 +2218,9 @@
         "prefix-sums"
       ],
       "patterns": [
-        16
+        3
       ],
-      "helloInterview": "Inventory Packer（Easy）",
+      "helloInterview": "Design Yelp 和 Local Delivery Service",
       "concepts": [
         "mmr",
         "reranking",
@@ -2238,9 +2238,9 @@
         "exists"
       ],
       "patterns": [
-        4
+        31
       ],
-      "helloInterview": "Design Dropbox",
+      "helloInterview": "Design FB News Feed 和 Instagram",
       "concepts": [
         "agents-vs-workflows",
         "function-calling",
@@ -2264,7 +2264,7 @@
       "patterns": [
         7
       ],
-      "helloInterview": "重画 Bitly 和 Dropbox",
+      "helloInterview": "Design Rate Limiter",
       "concepts": [
         "agent-state",
         "langgraph",
@@ -2279,9 +2279,10 @@
         "heaps"
       ],
       "patterns": [
-        8
+        18,
+        19
       ],
-      "helloInterview": "Redis、缓存与限流",
+      "helloInterview": "Spell Checker（Easy）",
       "concepts": [
         "citations",
         "groundedness",
@@ -2302,9 +2303,9 @@
         "dense-rank"
       ],
       "patterns": [
-        18
+        11
       ],
-      "helloInterview": "Design Rate Limiter",
+      "helloInterview": "Design Distributed Cache",
       "concepts": [
         "rest-apis",
         "fastapi",
@@ -2319,9 +2320,9 @@
         "lru-cache"
       ],
       "patterns": [
-        10
+        6
       ],
-      "helloInterview": "Spell Checker（Easy）",
+      "helloInterview": "Battleship（Easy）",
       "concepts": [
         "load-testing",
         "logs",
@@ -2340,9 +2341,9 @@
         "rolling-aggregations"
       ],
       "patterns": [
-        11
+        2
       ],
-      "helloInterview": "Design Distributed Cache",
+      "helloInterview": "Design Notification System",
       "concepts": []
     },
     {
@@ -2354,9 +2355,9 @@
         "dfs"
       ],
       "patterns": [
-        12
+        13
       ],
-      "helloInterview": "Easy 练习 3",
+      "helloInterview": "Design Job Scheduler",
       "concepts": [
         "offline-regression-evals",
         "ci-cd",
@@ -2372,9 +2373,9 @@
         "recursion"
       ],
       "patterns": [
-        24
+        10
       ],
-      "helloInterview": "队列、重试与幂等",
+      "helloInterview": "Task Scheduler（Medium）",
       "concepts": [
         "docker"
       ]
@@ -2386,9 +2387,9 @@
         "date-queries"
       ],
       "patterns": [
-        20
+        38
       ],
-      "helloInterview": "Design Job Scheduler",
+      "helloInterview": "Design Metrics Monitoring",
       "concepts": [
         "model-selection",
         "cloud-fundamentals",
@@ -2408,9 +2409,9 @@
         "ttl"
       ],
       "patterns": [
-        22
+        16
       ],
-      "helloInterview": "Task Scheduler（Medium）",
+      "helloInterview": "Design News Aggregator 和 Price Tracking Service",
       "concepts": []
     },
     {
@@ -2422,9 +2423,9 @@
         "parameterized-queries"
       ],
       "patterns": [
-        21
+        12
       ],
-      "helloInterview": "Design Metrics Monitoring",
+      "helloInterview": "限时 Mock：Design Ad Click Aggregator",
       "concepts": [
         "oidc",
         "rollback"
@@ -2440,9 +2441,9 @@
         "code-review"
       ],
       "patterns": [
-        23
+        26
       ],
-      "helloInterview": "调度系统故障推演",
+      "helloInterview": "Route Planner（Medium）",
       "concepts": [
         "clean-environment-reproduction",
         "readme",
@@ -2457,9 +2458,9 @@
         "api-clients"
       ],
       "patterns": [
-        2
+        17
       ],
-      "helloInterview": "限时 Mock：分布式消息队列",
+      "helloInterview": "Design FB Live Comments 和 WhatsApp",
       "concepts": [
         "access-control",
         "snowflake",
@@ -2474,9 +2475,9 @@
         "primary-and-foreign-keys"
       ],
       "patterns": [
-        5
+        25
       ],
-      "helloInterview": "Route Planner（Medium）",
+      "helloInterview": "Maze Solver（Medium）",
       "concepts": [
         "sec-financial-data"
       ]
@@ -2494,7 +2495,7 @@
       "patterns": [
         30
       ],
-      "helloInterview": "限时 Mock：实时行情分发",
+      "helloInterview": "Design YouTube",
       "concepts": [
         "data-quality"
       ]
@@ -2508,9 +2509,9 @@
         "query-optimization"
       ],
       "patterns": [
-        6
+        15
       ],
-      "helloInterview": "Medium 练习 3",
+      "helloInterview": "Design Ticketmaster 和 Online Auction",
       "concepts": [
         "point-in-time-data"
       ]
@@ -2523,9 +2524,9 @@
         "rate-limiter"
       ],
       "patterns": [
-        13
+        24
       ],
-      "helloInterview": "本周设计和代码复盘",
+      "helloInterview": "Card Game（Medium）",
       "concepts": []
     },
     {
@@ -2537,9 +2538,9 @@
         "concurrency"
       ],
       "patterns": [
-        14
+        33
       ],
-      "helloInterview": "限时 Mock：批量风险计算平台",
+      "helloInterview": "限时 Mock：Design Payment System",
       "concepts": []
     },
     {
@@ -2550,9 +2551,9 @@
         "percentiles"
       ],
       "patterns": [
-        15
+        20
       ],
-      "helloInterview": "Medium 练习 4",
+      "helloInterview": "Friend Recommender（Medium）",
       "concepts": [
         "memory"
       ]
@@ -2567,9 +2568,9 @@
         "profiling"
       ],
       "patterns": [
-        17
+        22
       ],
-      "helloInterview": "限时 Mock：交易事件处理",
+      "helloInterview": "Design Flash Sale",
       "concepts": [
         "mcp-fundamentals",
         "text-to-sql-evaluation"
@@ -2583,9 +2584,9 @@
         "date-queries"
       ],
       "patterns": [
-        19
+        21
       ],
-      "helloInterview": "Medium 练习 5",
+      "helloInterview": "Design LeetCode",
       "concepts": []
     },
     {
@@ -2600,9 +2601,9 @@
         "trees"
       ],
       "patterns": [
-        25
+        23
       ],
-      "helloInterview": "重做最弱的 Deep Dive",
+      "helloInterview": "Word Container（Medium）",
       "concepts": []
     },
     {
@@ -2614,9 +2615,9 @@
         "ttl"
       ],
       "patterns": [
-        26
+        36
       ],
-      "helloInterview": "限时 Mock：Design Job Scheduler 重做",
+      "helloInterview": "限时 Mock：Design Uber",
       "concepts": [
         "experiment-tracking",
         "investment-research-workbench"
@@ -2630,9 +2631,9 @@
         "group-by"
       ],
       "patterns": [
-        27
+        5
       ],
-      "helloInterview": "Medium 练习 6",
+      "helloInterview": "Connect Four（Hard）",
       "concepts": []
     },
     {
@@ -2645,7 +2646,7 @@
       "patterns": [
         28
       ],
-      "helloInterview": "最终 Mock",
+      "helloInterview": "Design Tinder 和 Strava",
       "concepts": [
         "prediction-intervals"
       ]
@@ -2664,9 +2665,9 @@
         "financial-analytics"
       ],
       "patterns": [
-        31
+        27
       ],
-      "helloInterview": "最终 Open-Ended 练习",
+      "helloInterview": "Design YouTube Top K",
       "concepts": [
         "online-feedback",
         "workers",
@@ -2682,9 +2683,9 @@
         "numpy-logistic-regression"
       ],
       "patterns": [
-        32
+        8
       ],
-      "helloInterview": "6 周总复盘",
+      "helloInterview": "AI Coding 流程查漏",
       "concepts": [
         "streaming",
         "token-usage",
@@ -2704,9 +2705,9 @@
         "recursion"
       ],
       "patterns": [
-        33
+        32
       ],
-      "helloInterview": "新题：限时 Mock",
+      "helloInterview": "限时 Mock：Design Web Crawler",
       "concepts": [
         "reproducibility",
         "model-versioning"
@@ -2727,7 +2728,7 @@
       "patterns": [
         37
       ],
-      "helloInterview": "新题：Medium",
+      "helloInterview": "Kitchen Orders（Hard）",
       "concepts": [
         "tool-selection-evaluation",
         "prompt-injection",
@@ -2748,7 +2749,7 @@
         "code-review"
       ],
       "patterns": [
-        38
+        14
       ],
       "helloInterview": "限时 Mock：Design Robinhood",
       "concepts": []
@@ -2783,10 +2784,9 @@
         "joins"
       ],
       "patterns": [
-        34,
-        35
+        39
       ],
-      "helloInterview": "新题：Open-Ended",
+      "helloInterview": "Maximize Unique Characters（Hard）",
       "concepts": [
         "ownership",
         "design-trade-offs"
@@ -2804,7 +2804,7 @@
         40,
         41
       ],
-      "helloInterview": "7 周卡点清单",
+      "helloInterview": "Design Google Docs",
       "concepts": []
     },
     {
@@ -2816,10 +2816,10 @@
         "linked-lists"
       ],
       "patterns": [
-        39,
-        36
+        34,
+        35
       ],
-      "helloInterview": "重做最弱的设计",
+      "helloInterview": "Design FB Post Search",
       "concepts": []
     },
     {
@@ -2844,7 +2844,7 @@
         "crawler"
       ],
       "patterns": [],
-      "helloInterview": "完整 Mock：System Design",
+      "helloInterview": "完整 Mock：Design ChatGPT",
       "concepts": []
     },
     {
@@ -2860,7 +2860,7 @@
         "rolling-aggregations"
       ],
       "patterns": [],
-      "helloInterview": "完整 Mock：AI Coding",
+      "helloInterview": "Nonogram Solver（Hard）",
       "concepts": []
     },
     {
@@ -2873,7 +2873,7 @@
         "dfs"
       ],
       "patterns": [],
-      "helloInterview": "总复盘",
+      "helloInterview": "Design Online Chess",
       "concepts": []
     }
   ]
