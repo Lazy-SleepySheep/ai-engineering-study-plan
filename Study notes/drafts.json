@@ -34,9 +34,13 @@
  "day-07.81xcof": "right == totalsum - left - x\n不用再credit一个prefix sumfix list\n什么时候还是得开数组？\n\n需要多次、随机查询任意区间和（如多个 [l, r] 查询）——此时 prefix 数组能把每次查询降到 O(1)；\n递推依赖多个历史位置的值（典型 DP），无法只保留一个滚动变量；\n题目本身没有 total 这种能把后缀和反推出来的全局量。\n一句话判断法：每个位置的值只用一次、且能被一个已知量推导出来 → 用变量代替数组（滚动思想）。",
  "day-07.ff6fxf": "先建list\nn = len(nums)\nanswer = [1] * n\n什么时候用for i, x in enumerate什么时候用for i in range(n)",
  "day-07.rjv43w": "左边不含自己乘prefix product，右边不含自己乘sumfix product\nfor i in range(n - 1, -1, -1):\nstart = n - 1：从最后一个下标开始\nstop = -1：不包含这个值，所以走到 0 就停（因为再减 1 就是 -1，等于 stop 了）\nstep = -1：每次递减 1",
+ "day-08.1547jjs": "' '.join(words)\n从结尾开始找单词，一个个放到新的list里然后用空格连起来。 如果单词也reverse就先找到单词然后再reverse每个单词",
  "day-08.1643014": "从后往前，这样不会覆盖原来的",
  "day-08.1p0dx6s": "求sum一样的，先算一个sliding window的sum每次加最后的减第一个，max=cur_sum如果大于",
  "day-08.1sjnej2": "再看一次",
  "day-08.dsa": "今天的题目可以多看一看\n",
- "day-08.yit595": "再看一次"
+ "day-08.yit595": "再看一次",
+ "day-09.15iqz9t": "cnt = [0] * (n + 1) # 得出list， i次引用的有几篇\n每个位置的value代表有几篇，比如cnt[2] = 1 代表两次引用的文章有1篇",
+ "day-09.1h6yb8x": "#Boyer–Moore 投票算法是最优解",
+ "day-09.5znq14": "把events列出来，里面是所有node, year和+-1。"
 }

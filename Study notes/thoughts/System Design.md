@@ -46,3 +46,26 @@
 ## 2026-11-13 18:04
 
 In an interview, the key distinction to make is: virtual nodes prevent structural imbalance (uneven key distribution), while replication and key salting prevent workload imbalance (uneven traffic).
+
+## 2026-11-19 14:30
+
+![图片](images/9da029d0adbd.png)
+![图片](images/ba9a19e48b36.png)
+handling large blobs
+
+## 2026-11-19 16:07
+
+Managing Long Running Tasks Pattern
+两个核心：消息队列（Message Queue） 与 Worker 进程池（Pool of Workers）
+
+## 2026-11-19 16:07
+
+![图片](images/45ad1a99d979.png)
+
+## 2026-11-19 16:10
+
+![图片](images/5fce5bcdbf8f.png)
+
+## 2026-11-19 16:46
+
+![图片](images/5c775041e119.png)

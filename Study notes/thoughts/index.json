@@ -1,6 +1,6 @@
 {
 "AI学习随记": {"count":2,"created":"2026-11-12 14:01","updated":"2026-11-12 14:01","preview":"test"},
-"System Design": {"count":2,"created":"2026-11-13 16:56","updated":"2026-11-13 18:04","preview":"In an interview, the key distinction to make is: virtual nodes prevent structura"},
-"刷题随记": {"count":5,"created":"2026-11-12 14:02","updated":"2026-11-13 15:01","preview":"binary search: 单调可行性，找到第一个x能blablabla后面就都可以"},
+"System Design": {"count":7,"created":"2026-11-13 16:56","updated":"2026-11-19 16:46","preview":"[图片]"},
+"刷题随记": {"count":9,"created":"2026-11-12 14:02","updated":"2026-11-19 12:28","preview":"n[:3] 取3个数不是取4个数. n[start:stop] start：包含（inclusive） stop：不包含（exclusive） step：可选，"},
 "学习目标": {"count":2,"created":"2026-11-12 16:29","updated":"2026-11-12 16:35","preview":"LeetCode 找pattern: 找到一个很好的giHub repo: https://github.com/design-gurus/grokking-c"}
 }
