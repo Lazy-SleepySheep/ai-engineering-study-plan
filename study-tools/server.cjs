@@ -1,6 +1,6 @@
 // Local server for the study pages: node study-tools/server.cjs [port]   (default 5510, 127.0.0.1 only)
 // 5510, not 5500: VS Code's Live Server uses 5500 and cannot save progress.
-//   - serves the repo as static files
+//   - serves the repo as static files, with byte ranges (videos play and seek); .mp4 as video/mp4
 //   - GET  /api/progress  -> { ticks, notes }
 //   - POST /api/progress  -> tick / untick / course name; writes study-progress.json and mirrors it into the timetable .md
 //   - GET/POST /api/notes, POST /api/notes/generate -> study-note drafts (学习记录) and the generated "Study notes/<date> Day NN.md" (今日学习笔记)
@@ -31,7 +31,7 @@ const TYPES = {
   '.json': 'application/json; charset=utf-8', '.ipynb': 'application/json; charset=utf-8', '.md': 'text/plain; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8', '.yaml': 'text/plain; charset=utf-8', '.csv': 'text/plain; charset=utf-8',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.gif': 'image/gif', '.ico': 'image/x-icon',
-  '.webp': 'image/webp',
+  '.webp': 'image/webp', '.mp4': 'video/mp4', '.webm': 'video/webm', '.vtt': 'text/vtt; charset=utf-8',
 };
 
 function syncMd() {
@@ -264,7 +264,17 @@ function generateNote(body) {
 function serveFile(req, res, file) {
   fs.stat(file, (e, st) => {
     if (e || !st.isFile()) return send(res, 404, 'not found', 'text/plain');
-    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Content-Length': st.size, 'Cache-Control': 'no-cache' });
+    const head = { 'Content-Type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'Accept-Ranges': 'bytes' };
+    // a byte range: a video player asks for the part it plays or seeks to ("bytes=100-", "bytes=100-199", "bytes=-500")
+    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+    if (m && (m[1] || m[2])) {
+      const start = m[1] ? +m[1] : Math.max(0, st.size - +m[2]), end = m[1] && m[2] ? Math.min(+m[2], st.size - 1) : st.size - 1;
+      if (start > end || start >= st.size) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
+      res.writeHead(206, { ...head, 'Content-Range': `bytes ${start}-${end}/${st.size}`, 'Content-Length': end - start + 1 });
+      if (req.method === 'HEAD') return res.end();
+      return fs.createReadStream(file, { start, end }).pipe(res);
+    }
+    res.writeHead(200, { ...head, 'Content-Length': st.size });
     if (req.method === 'HEAD') return res.end();
     fs.createReadStream(file).pipe(res);
   });

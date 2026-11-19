@@ -195,7 +195,7 @@ function tab(md, { esc }) {
   const pct = (100 * done / order.length).toFixed(1) + '%';
   const panel = `<div class="rec-panel" data-tab="pattern" hidden>`
     + `<div class="rec-sum"><span class="rec-big">已学 <span class="pt-done">${done}</span> / ${order.length}<span class="muted"> 个 pattern</span></span>`
-    + `<span class="rec-bar"><span class="pt-bar" style="width:${pct}"></span></span><span class="rec-line">${stageLine}</span><p class="rec-msg muted pt-msg"></p></div>`
+    + `<span class="rec-bar"><span class="pt-bar" style="width:${pct}"></span></span><span class="rec-pct pt-pct">${pct}</span><span class="rec-line">${stageLine}</span><p class="rec-msg muted pt-msg"></p></div>`
     + `<div class="pt-links">${links}</div>`
     + `<p class="pt-hint muted">每天 08:30 Data Structure & Algo 一开始学一个（有几天两个），名字后面的 (D04) 是哪天学，勾选和时间表当天那一格是同一个勾。备注和学习记录里这个 pattern 的框是同一段，写在哪边都行，会自动保存。名字下面的 &lt;/&gt; code template 点开可以写这个 pattern 的代码模板，写过的带 ✓。拖表头右边的竖线可以改列宽（双击还原）；表格比页面宽时左右滑，Pattern 那一列不动。题目变绿带 ✓ 是在时间表里勾过（早上或 10:30 练习都算），后面的 D05 是计划哪天做，🔒 是会员题。<button type="button" class="pt-reset">列宽全部还原</button></p>`
     + `<div class="pt-wrap"><table class="pt-table" style="width:${cols.reduce((a, c) => a + c[2], 0)}px"><colgroup>${cols.map(([k, , w]) => `<col data-col="${k}" data-w="${w}" style="width:${w}px">`).join('')}</colgroup>`
@@ -296,6 +296,7 @@ function client() {
     var done = rows.filter(function (r) { return r.classList.contains('done'); });
     $$('.pt-done').forEach(function (el) { el.textContent = done.length; });
     $$('.pt-bar').forEach(function (el) { el.style.width = (100 * done.length / rows.length).toFixed(1) + '%'; });
+    $$('.pt-pct').forEach(function (el) { el.textContent = (100 * done.length / rows.length).toFixed(1) + '%'; });
     $$('[data-stage-done]').forEach(function (el) { el.textContent = done.filter(function (r) { return r.dataset.stage === el.dataset.stageDone; }).length; });
     $$('.rec-tab-n[data-tab="pattern"]').forEach(function (el) { el.textContent = done.length + ' / ' + rows.length; });
   }

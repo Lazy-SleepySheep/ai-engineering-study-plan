@@ -1,15 +1,15 @@
-// 刷题记录: five tabs, LeetCode (the Top Interview 150, one column per LeetCode topic; solved problems are green with a
+// 刷题记录: four tabs, LeetCode (the Top Interview 150, one column per LeetCode topic; solved problems are green with a
 // check), Pattern (the 41 LeetCode patterns of the Data Structure & Algo block, patterns.cjs; ticked there or in the timetable),
-// Hello Interview (the 13:45 block, hello-interview.cjs, one column per week; a day is done when its ☐ is ticked), and
-// System Design and AI Coding (every Hello Interview practice problem, hi-problems.cjs, one column per difficulty;
-// ticked right in the tab, the date of the tick is kept).
+// and System Design and AI Coding (the 13:45 Hello Interview block, hi-problems.cjs: the 讲义 tracker, then the problems
+// and days of the plan, one column per week; ticked there or in the timetable, the date of a tick made here is kept).
+// The Hello Interview tab of before is part of these two; #hellointerview opens System Design.
 // A problem counts as solved when any of its ticks in the timetable is checked (its day, a review day or a repeat day).
 // build.cjs writes AI_ENGINEER_TOP150_RECORD.html with the state at build time; the page then reads the live ticks from
 // /api/progress (local server), or falls back to that state plus the ticks saved in this browser.
 const fs = require('fs'), path = require('path');
 const progress = require('./progress.cjs');
 const patterns = require('./patterns.cjs');
-const hi = require('./hello-interview.cjs');
+
 const hp = require('./hi-problems.cjs');
 
 const FILE = 'AI_ENGINEER_TOP150_RECORD.html', TITLE = '刷题记录';
@@ -62,7 +62,8 @@ const style = `<style>
 .rec-sum{display:flex;flex-wrap:wrap;align-items:center;gap:4px 18px;background:#fff;border:1px solid #dce4ea;border-radius:10px;padding:8px 14px;margin:0 0 12px}
 .rec-big{font-size:18px;font-weight:600}
 .rec-big .muted{font-size:14px;font-weight:400}
-.rec-sum>.rec-bar{flex:1 1 160px}
+.rec-sum>.rec-bar{flex:1 1 160px;height:10px;border-radius:5px}
+.rec-pct{flex:none;min-width:3.6em;font-size:15px;font-weight:600;color:#116329}
 .rec-line{font-size:13px;color:#4b5b66}
 .rec-msg{flex-basis:100%;margin:0;font-size:12px}
 .rec-bar{height:6px;background:#e6ecf0;border-radius:3px;overflow:hidden}
@@ -112,6 +113,7 @@ function client() {
       set(panel, '.rec-done', done.length);
       set(panel, '.rec-left', all.length - done.length);
       bar(panel.querySelector('.rec-sum .rec-bar span'), done.length, all.length);
+      set(panel, '.rec-sum .rec-pct', (all.length ? 100 * done.length / all.length : 0).toFixed(1) + '%');
       [].slice.call(panel.querySelectorAll('.rec-col')).forEach(function (col) {
         var n = col.querySelectorAll('.rec-p').length, d = col.querySelectorAll('.rec-p.done').length;
         col.querySelector('.rec-c').textContent = d;
@@ -138,6 +140,7 @@ function client() {
     }).catch(offline);
   }
   function pick(name, save) {
+    if (name === 'hellointerview') name = 'systemdesign';   // the Hello Interview tab is now part of System Design
     if (!panels.some(function (p) { return p.dataset.tab === name; })) name = panels[0].dataset.tab;
     panels.forEach(function (p) { p.hidden = p.dataset.tab !== name; });
     tabs.forEach(function (b) { b.setAttribute('aria-selected', String(b.dataset.tab === name)); });
@@ -186,7 +189,7 @@ function page(md, { shell, esc }) {
     };
     return `<div class="rec-panel" data-tab="${tab}"${tab === 'leetcode' ? '' : ' hidden'}>${top}`
       + `<div class="rec-sum"><span class="rec-big">${doneWord} <span class="rec-done">${done}</span> / ${list.length}<span class="muted"> · 还剩 <span class="rec-left">${list.length - done}</span> ${unit}</span></span>`
-      + `<span class="rec-bar"><span style="width:${pct(done, list.length)}"></span></span>${lines.map(line).join('')}<p class="rec-msg muted"></p></div>${note}`
+      + `<span class="rec-bar"><span style="width:${pct(done, list.length)}"></span></span><span class="rec-pct">${pct(done, list.length)}</span>${lines.map(line).join('')}<p class="rec-msg muted"></p></div>${note}`
       + `<div class="rec-grid">${sections.map(col).join('')}</div></div>`;
   };
   const li = (p, link, day, tip) => `<li class="rec-p${p.done ? ' done' : ''}" data-keys="${esc(p.keys.join(' '))}" data-diff="${esc(p.diff)}">`
@@ -206,31 +209,23 @@ function page(md, { shell, esc }) {
 
   const pt = patterns.tab(md, { esc });
 
-  // Hello Interview: one column per week; meta = kind and day
-  const KIND = { 'System Design': 'SD', 'AI Coding': 'AI Coding', '基础': '基础', '复盘': '复盘' };
-  const hiList = hi.items(md);
-  const hiItem = p => `<li class="rec-p${p.done ? ' done' : ''}" data-keys="${esc(p.keys.join(' '))}" data-group="${esc(p.group)}">`
-    + `<span class="rec-ck" aria-hidden="true">${p.done ? '✓' : ''}</span><span class="rec-title"><a href="${esc(hi.mainLink(p))}" target="_blank" rel="noopener" title="${esc(p.task)}">${esc(p.title)}</a></span>`
-    + `<span class="rec-meta">${esc(KIND[p.kind])} · ${dayLink(p.day)}</span></li>`;
-
+  // Hello Interview (the 13:45 block): its days are in the System Design and AI Coding tabs, by week (hi-problems.cjs)
   const hpTracks = hp.tracks(md);
 
   const count = list => `${list.filter(p => p.done).length} / ${list.length}`;
   const body = `${style}${patterns.style}${hp.style}<div class="rec-head"><h1>${TITLE}</h1><div class="rec-tabs" role="tablist">`
     + `<button type="button" role="tab" id="leetcode" data-tab="leetcode" aria-selected="true">LeetCode<span class="rec-tab-n" data-tab="leetcode">${count(lc)}</span></button>`
     + `<button type="button" role="tab" id="pattern" data-tab="pattern" aria-selected="false">Pattern<span class="rec-tab-n" data-tab="pattern">${pt.done} / ${pt.total}</span></button>`
-    + `<button type="button" role="tab" id="hellointerview" data-tab="hellointerview" aria-selected="false">Hello Interview<span class="rec-tab-n" data-tab="hellointerview">${count(hiList)}</span></button>`
     + hpTracks.map(t => `<button type="button" role="tab" id="${t.tab}" data-tab="${t.tab}" aria-selected="false">${t.name}<span class="rec-tab-n" data-tab="${t.tab}">${count(t.items)}</span></button>`).join('')
     + `</div></div>`
-    + `<p class="rec-note muted">LeetCode 的勾选在<a href="AI_ENGINEER_TRANSITION_PLAN.html">每日时间表</a>里做，当天、复习日或重复的那天勾过一次就算做了；按 LeetCode 的专题分列，每列按日期排序，鼠标停在 Day 上能看到其他日期。Pattern 可以直接在表里打勾，和时间表当天 Data Structure & Algo 那一格的 pattern 是同一个勾。Hello Interview 在时间表 13:45 那一格打勾，每周一列，鼠标停在题目上能看到当天要做什么。System Design 和 AI Coding 最上面是 Hello Interview 的讲义，读完就勾上，和时间表 13:45 那一格的讲义是同一个勾；下面是题库里的全部练习题，练过哪道就在表里直接打勾。</p>`
+    + `<p class="rec-note muted">LeetCode 的勾选在<a href="AI_ENGINEER_TRANSITION_PLAN.html">每日时间表</a>里做，当天、复习日或重复的那天勾过一次就算做了；按 LeetCode 的专题分列，每列按日期排序，鼠标停在 Day 上能看到其他日期。Pattern 可以直接在表里打勾，和时间表当天 Data Structure & Algo 那一格的 pattern 是同一个勾。System Design 和 AI Coding 是时间表 13:45 的 Hello Interview：最上面是讲义，下面是题目，按周排；讲义和题目的勾都和时间表 13:45 那一格是同一个勾，在哪边勾都行。</p>`
     + panel('leetcode', lc, lcSections, [['diff', '', DIFFS]], lcItem)
     + pt.panel
-    + panel('hellointerview', hiList, [...new Set(hiList.map(p => p.section))], [['group', '', hi.GROUPS]], hiItem, ['已完成', '天'])
-    + hpTracks.map(t => panel(t.tab, t.items.map(p => ({ ...p, section: p.diff })), hp.DIFFS.filter(d => t.items.some(p => p.diff === d)),
-      [['diff', '', hp.DIFFS], ['planned', '', hp.PLAN]], p => hp.item(p, esc), ['已练', '题'], hp.note(t), hp.articleBox(hp.articles(md, t), esc))).join('')
+    + hpTracks.map(t => panel(t.tab, t.items, t.sections, [['diff', '', hp.DIFFS]], p => hp.item(p, esc), ['已完成', '项'], hp.note(t),
+      hp.articleBox(hp.articles(md, t), esc))).join('')
     + `<script>(${client.toString()})();(${patterns.client.toString()})();(${hp.articleClient.toString()})();</script>`;
   fs.writeFileSync(FILE, shell(TITLE, body, true));
-  return { file: FILE, leetcode: lc.length, patterns: pt.total, helloInterview: hiList.length, systemDesign: hpTracks[0].items.length, aiCoding: hpTracks[1].items.length };
+  return { file: FILE, leetcode: lc.length, patterns: pt.total, systemDesign: hpTracks[0].items.length, aiCoding: hpTracks[1].items.length };
 }
 
 module.exports = { FILE, TITLE, problems, page };

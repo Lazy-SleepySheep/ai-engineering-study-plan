@@ -1,5 +1,5 @@
-// Hello Interview: the 2-hour System Design + AI Coding block of the timetable (13:45–15:45) and the Hello Interview tab
-// of 刷题记录. The plan is in hello-interview.json:
+// Hello Interview: the 2-hour System Design + AI Coding block of the timetable (13:45–15:45), and its days for the System
+// Design and AI Coding tabs of 刷题记录 (hi-problems.cjs). The plan is in hello-interview.json:
 //   - Day 01–03: the block used to be General & AI System Design; a day where that was ticked keeps it, the others skip
 //   - Day 04–33: the 30-day plan in its own order (hi = its own Day 01–30, day = hi + 3): Day 04 Delivery Framework,
 //     Day 05 Design Bitly, ...; its weeks start on a Thursday, so they are shown with their day range, not as "this week"
@@ -16,8 +16,9 @@
 // ［ ］. build.cjs shows Material and Review in a left column (layout below).
 // Titles link to the website as before. After an article (讲义) or a problem breakdown (题解) that has a local copy in
 // hello-interview-local.json (resource/, downloaded pages; in git except the videos and the pages over 100 MB, see .gitignore) comes （本地连接）, and after an article with a
-// summary note in the Obsidian vault also Summary, linked to the note's HTML copy (summaries.cjs):
-// "[Scaling Reads](web)（[本地连接](local) · [Summary](resource/Summary/...html)）".
+// summary note in the Obsidian vault also Summary, linked to the note's HTML copy (summaries.cjs), and after a page with
+// a video ("videos", an mp4 in resource/) also Video:
+// "[Scaling Reads](web)（[本地连接](local) · [Summary](resource/Summary/...html) · [Video](resource/.../Scaling Reads.mp4)）".
 // build.cjs writes the row with the block's old time (14:15–15:00) like the other rows, then moves it to 13:45–15:45.
 const fs = require('fs'), path = require('path');
 const progress = require('./progress.cjs');
@@ -64,6 +65,9 @@ const article = u => !/\/problem-breakdowns\/|\/practice\//.test(u);
 const KNOWN = new Set([...PROBS.learn.map(p => p.url), ...USES.keys(), ...DATA.items.flatMap(it => it.links.map(([, u]) => u)).filter(article)]);
 for (const u of Object.keys(LOCAL.pages)) if (!KNOWN.has(u)) throw Error('hello-interview-local: not a page of the plan: ' + u);
 for (const id of Object.keys(LOCAL.summary)) if (!PAGE.has(id)) throw Error('hello-interview-local: summary of an unknown page ' + id);
+for (const u of Object.keys(LOCAL.videos || {})) if (!KNOWN.has(u)) throw Error('hello-interview-local: video of a page not in the plan: ' + u);
+for (const [u, o] of Object.entries(LOCAL.online || {}))
+  if (!(LOCAL.videos || {})[u] || !/^https:\/\/(www\.youtube\.com\/watch\?v=[\w-]{11}|drive\.google\.com\/file\/d\/[\w-]+\/view)$/.test(o)) throw Error('hello-interview-local: online video without a local one, or not a YouTube / Google Drive link: ' + u);
 // a path as a URL: each folder and file name encoded, also ' ( ) (they end a link in layout.cjs and Markdown); "#section" kept
 const enc = p => { const [f, h] = p.split('#'); return f.split('/').map(s => encodeURIComponent(s).replace(/['()!*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())).join('/') + (h ? '#' + h : ''); };
 const localOf = u => (LOCAL.pages[u] ? enc(LOCAL.pages[u]) : '');
@@ -72,9 +76,21 @@ const localOf = u => (LOCAL.pages[u] ? enc(LOCAL.pages[u]) : '');
 const summaryHtml = id => (LOCAL.summary[id] ? `resource/Summary/${path.posix.basename(path.posix.dirname(LOCAL.summary[id]))}/${path.posix.basename(LOCAL.summary[id], '.md')}.html` : '');
 const summaryOf = id => (LOCAL.summary[id] ? enc(summaryHtml(id)) : '');
 const obsidianOf = id => (LOCAL.summary[id] ? `obsidian://open?vault=${encodeURIComponent(LOCAL.vault)}&file=${encodeURIComponent(LOCAL.summary[id].replace(/\.md$/, ''))}` : '');
-// （本地连接 · Summary） after a title, or '' when there is neither; "before" goes first inside the brackets
+// the page's video (resource/, an mp4 not in git: it plays from the local server only), or ''
+const videoOf = u => ((LOCAL.videos || {})[u] ? enc(LOCAL.videos[u]) : '');
+// its length, "25:13" (videoSeconds, read from the mp4 by video-length.cjs when build.cjs runs), or ''
+const videoLen = u => ((LOCAL.videoSeconds || {})[u] ? require('./video-length.cjs').clock(LOCAL.videoSeconds[u]) : '');
+// The Video links on a page that is not on this computer's local server (GitHub Pages, the phone): the mp4s are not
+// there, so each one opens its video on YouTube or Google Drive (LOCAL.online) instead; a video with none stays a link
+// to the local file. One script per page, after the page's links (build.cjs adds it to the pages with a Video link).
+const videoScript = () => `<script>(function(M){if(location.protocol==='file:'||/^(127\\.0\\.0\\.1|localhost)$/.test(location.hostname))return;`
+  + `[].forEach.call(document.querySelectorAll('a[href$=".mp4"]'),function(a){var p;try{p=decodeURIComponent(a.getAttribute('href')).replace(/^(\\.\\.\\/)+/,'')}catch(e){return}`
+  + `var u=M[p];if(u){a.href=u;a.title=u.indexOf('youtube')>0?'YouTube':'Google Drive（只有自己能看）'}else{a.title='这个视频只在电脑上，手机上还看不了';a.style.opacity='.45'}})})(`
+  + JSON.stringify(Object.fromEntries(Object.entries(LOCAL.online || {}).map(([u, o]) => [LOCAL.videos[u], o]))).replace(/</g, '\\u003c') + ')</script>';
+// （本地连接 · Summary · Video） after a title, or '' when there is none of them; "before" goes first inside the brackets
 const extras = (u, id, before = []) => {
-  const alt = [...before, ...(localOf(u) ? [`[本地连接](${localOf(u)})`] : []), ...(id && summaryOf(id) ? [`[Summary](${summaryOf(id)})`] : [])];
+  const alt = [...before, ...(localOf(u) ? [`[本地连接](${localOf(u)})`] : []), ...(id && summaryOf(id) ? [`[Summary](${summaryOf(id)})`] : []),
+    ...(videoOf(u) ? [`[Video](${videoOf(u)})`] : [])];
   return alt.length ? `（${alt.join(' · ')}）` : '';
 };
 const titled = (title, u, id, before) => `[${title}](${u})` + extras(u, id, before);
@@ -145,13 +161,14 @@ function topic(day) {
 // where the day's title links to: its (first) problem breakdown, otherwise its first link
 const mainLink = it => (it.links.find(([, u]) => u.includes('/problem-breakdowns/')) || it.links[0])[1];
 
-// the record tab's items, with their tick keys read from the timetable Markdown (☐/☑)
+// the plan's days for 刷题记录 (the System Design and AI Coding tabs, hi-problems.cjs), with their tick keys and labels
+// read from the timetable Markdown (☐/☑)
 function items(md) {
   const found = new Map();
   for (const [, day, block] of md.matchAll(/<a id="(day-\d+)"><\/a>([\s\S]*?)(?=<a id="day-|$)/g)) {
     const line = block.split('\n').find(l => l.startsWith('| ' + TIME));
     const part = line && (line.slice(1, -1).split('|')[2] || '').trim().split('<br>').find(p => TICK.test(p) && /[☐☑]/.test(p));
-    if (part) found.set(+day.slice(4), { keys: [progress.keyOf(day, part)], done: part.includes('☑') });
+    if (part) found.set(+day.slice(4), { keys: [progress.keyOf(day, part)], done: part.includes('☑'), label: progress.strip(part) });
   }
   return DATA.items.map(it => {
     const f = found.get(it.day);
@@ -160,4 +177,4 @@ function items(md) {
   });
 }
 
-module.exports = { DATA, FIRST, TIME, GROUPS, PAGE, LEARNED, LOCAL, row, tip, topic, items, mainLink, localOf, summaryOf, summaryHtml, obsidianOf, enc, layout };
+module.exports = { DATA, FIRST, TIME, GROUPS, PAGE, LEARNED, LOCAL, row, tip, topic, items, mainLink, localOf, summaryOf, videoOf, videoLen, videoScript, summaryHtml, obsidianOf, enc, layout };

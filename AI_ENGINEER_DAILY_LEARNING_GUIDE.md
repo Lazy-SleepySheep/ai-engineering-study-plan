@@ -24,7 +24,7 @@
 | SQL | 34 题 | 周二、周四前 1 小时，每天 3 题先做前两题；部分题重复复习，共 54 道次 |
 | LeetCode Pattern | 41 个 | 每天 Data Structure & Algo 一开始学（读讲义 15 分钟），从 Day 04 开始，基本一天一个，顺序跟着早上的 Study topic 走；早上的 Top 150 题排在它的 pattern 当天或之后，不会先做题后学 pattern。Top K 和 K-way Merge 一天，偏门的两个一天；Day 42–45 混合识别。每个 pattern 读完再做两道练习题。[Pattern 总表](Reports/AI_ENGINEER_TOP150_RECORD.html#pattern) |
 | 面试原题 | 623 题 | 每天 16:45–17:45，9–20 题，题下有英文答案、详解和追问 |
-| Hello Interview | 42 天 | 每天 13:45–15:45，2 小时，Day 04–45：题库里的 System Design 32 道和 AI Coding 13 道全部排进来，其中 6 天是两道 System Design 一天；Day 04、Day 35、Day 42 不做题库的题（答题框架、查漏、重做）。Hello Interview 的讲义 33 篇（System Design 的 Core Concepts、Patterns、Key Technologies，AI Coding 的 Common Patterns）排在第一道用到它的题那天或之前，当天先读讲义再做题。[按天记录](Reports/AI_ENGINEER_TOP150_RECORD.html#hellointerview) · [System Design 题](Reports/AI_ENGINEER_TOP150_RECORD.html#systemdesign) · [AI Coding 题](Reports/AI_ENGINEER_TOP150_RECORD.html#aicoding) |
+| Hello Interview | 42 天 | 每天 13:45–15:45，2 小时，Day 04–45：题库里的 System Design 32 道和 AI Coding 13 道全部排进来，其中 6 天是两道 System Design 一天；Day 04、Day 35、Day 42 不做题库的题（答题框架、查漏、重做）。Hello Interview 的讲义 33 篇（System Design 的 Core Concepts、Patterns、Key Technologies，AI Coding 的 Common Patterns）排在第一道用到它的题那天或之前，当天先读讲义再做题。[System Design 题](Reports/AI_ENGINEER_TOP150_RECORD.html#systemdesign) · [AI Coding 题](Reports/AI_ENGINEER_TOP150_RECORD.html#aicoding) |
 | System Design 讲义 | 20 个主题 | 不排进时间表，需要时在 [Topic Library](Study%20topics/index.html) 里找 |
 | ML Notebook | 15 个 | 不排进时间表，需要时在 [Topic Library](Study%20topics/index.html) 里找 |
 | Topic 讲义 | 252 页 | 时间表里有链接，也可在 [Topic Library](Study%20topics/index.html) 搜索 |
